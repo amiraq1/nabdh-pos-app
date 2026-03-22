@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Trash2, Loader2, Search, Plus, Minus } from "lucide-react";
+import { Trash2, Loader2, Search, Plus, Minus, Barcode } from "lucide-react";
 import { toast } from "sonner";
+import BarcodeScanner from "@/components/BarcodeScanner";
 
 interface CartItem {
   productId: number;
@@ -27,6 +28,7 @@ export default function POSPage() {
   const [customerPhone, setCustomerPhone] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
 
   const { data: products, isLoading: productsLoading } = trpc.products.list.useQuery(selectedCategory ? parseInt(selectedCategory) : undefined);
   const { data: categories } = trpc.categories.list.useQuery();
@@ -87,6 +89,16 @@ export default function POSPage() {
   const taxableAmount = subtotal - discountAmount;
   const taxAmount = taxableAmount * (taxRate / 100);
   const total = taxableAmount + taxAmount;
+
+  const handleBarcodeDetected = (barcode: string) => {
+    // Find product by barcode
+    const product = products?.find((p: any) => p.barcode === barcode);
+    if (product) {
+      addToCart(product);
+    } else {
+      toast.error("المنتج غير موجود");
+    }
+  };
 
   const handleCheckout = async () => {
     if (cart.length === 0) {
@@ -165,6 +177,14 @@ export default function POSPage() {
               ))}
             </SelectContent>
           </Select>
+          <Button
+            onClick={() => setShowBarcodeScanner(true)}
+            className="gap-2"
+            variant="outline"
+          >
+            <Barcode className="w-4 h-4" />
+            مسح الباركود
+          </Button>
         </div>
 
         {/* Products Grid */}
@@ -375,6 +395,13 @@ export default function POSPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Barcode Scanner */}
+      <BarcodeScanner
+        isOpen={showBarcodeScanner}
+        onClose={() => setShowBarcodeScanner(false)}
+        onBarcodeDetected={handleBarcodeDetected}
+      />
     </div>
   );
 }
