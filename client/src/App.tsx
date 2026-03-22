@@ -5,14 +5,22 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import CategoriesPage from "./pages/CategoriesPage";
+import ProductsPage from "./pages/ProductsPage";
+import InventoryPage from "./pages/InventoryPage";
+import POSPage from "./pages/POSPage";
+import ReportsPage from "./pages/ReportsPage";
 
 function Router() {
-  // make sure to consider if you need authentication for certain routes
   return (
     <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
+      <Route path="/" component={Home} />
+      <Route path="/pos" component={POSPage} />
+      <Route path="/products" component={ProductsPage} />
+      <Route path="/categories" component={CategoriesPage} />
+      <Route path="/inventory" component={InventoryPage} />
+      <Route path="/reports" component={ReportsPage} />
+      <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -28,7 +36,6 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider
         defaultTheme="light"
-        // switchable
       >
         <TooltipProvider>
           <Toaster />
