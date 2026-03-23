@@ -10,6 +10,7 @@ import ProductsPage from "./pages/ProductsPage";
 import InventoryPage from "./pages/InventoryPage";
 import POSPage from "./pages/POSPage";
 import ReportsPage from "./pages/ReportsPage";
+import ExpensesPage from "./pages/ExpensesPage";
 
 function Router() {
   return (
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/categories" component={CategoriesPage} />
       <Route path="/inventory" component={InventoryPage} />
       <Route path="/reports" component={ReportsPage} />
+      <Route path="/expenses" component={ExpensesPage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

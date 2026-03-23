@@ -1,0 +1,142 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "openId": "dev-mock-user",
+      "name": "المدير (وضع التطوير)",
+      "role": "admin",
+      "createdAt": "2026-03-22T22:41:37.994Z",
+      "updatedAt": "2026-03-22T22:41:37.994Z",
+      "lastSignedIn": "2026-03-22T22:41:37.994Z"
+    }
+  ],
+  "categories": [
+    {
+      "id": 1,
+      "name": "إلكترونيات",
+      "description": "أجهزة إلكترونية وجوالات",
+      "createdAt": "2026-03-22T22:41:37.994Z",
+      "updatedAt": "2026-03-22T22:41:37.994Z"
+    },
+    {
+      "id": 2,
+      "name": "أدوات مكتبية",
+      "description": "أقلام وأوراق",
+      "createdAt": "2026-03-22T22:41:37.994Z",
+      "updatedAt": "2026-03-22T22:41:37.994Z"
+    }
+  ],
+  "products": [
+    {
+      "id": 1,
+      "categoryId": 0,
+      "name": "نتلاا",
+      "description": "عالاىلا",
+      "sku": "44",
+      "barcode": "6281016902173",
+      "price": "699.95",
+      "costPrice": "",
+      "imageUrl": "",
+      "quantity": 8,
+      "minStockLevel": 10,
+      "createdAt": "2026-03-22T22:41:37.994Z",
+      "updatedAt": "2026-03-22T22:55:42.790Z"
+    }
+  ],
+  "stockHistory": [
+    {
+      "id": 1,
+      "productId": 1,
+      "quantityChange": 1,
+      "reason": "purchase",
+      "notes": "",
+      "createdAt": "2026-03-22T22:45:56.610Z"
+    },
+    {
+      "id": 2,
+      "productId": 1,
+      "quantityChange": 10,
+      "reason": "adjustment",
+      "notes": "",
+      "createdAt": "2026-03-22T22:46:37.623Z"
+    },
+    {
+      "id": 3,
+      "productId": 1,
+      "quantityChange": 10,
+      "reason": "purchase",
+      "notes": "",
+      "createdAt": "2026-03-22T22:48:44.605Z"
+    },
+    {
+      "id": 4,
+      "productId": 1,
+      "quantityChange": 10,
+      "reason": "adjustment",
+      "notes": "",
+      "createdAt": "2026-03-22T22:50:21.964Z"
+    },
+    {
+      "id": 5,
+      "productId": 1,
+      "quantityChange": 10,
+      "reason": "adjustment",
+      "notes": "",
+      "createdAt": "2026-03-22T22:50:34.248Z"
+    }
+  ],
+  "sales": [
+    {
+      "id": 1,
+      "invoiceNumber": "INV-1774219905533",
+      "totalAmount": "699.95",
+      "taxAmount": "NaN",
+      "discountAmount": "NaN",
+      "finalAmount": "NaN",
+      "paymentMethod": "card",
+      "customerName": "عميل عام",
+      "customerPhone": "",
+      "notes": "",
+      "userId": 1,
+      "createdAt": "2026-03-22T22:51:45.328Z",
+      "updatedAt": "2026-03-22T22:51:45.328Z",
+      "status": "completed"
+    },
+    {
+      "id": 2,
+      "invoiceNumber": "INV-1774220142928",
+      "totalAmount": "699.95",
+      "taxAmount": "0",
+      "discountAmount": "349.975",
+      "finalAmount": "349.975",
+      "paymentMethod": "cash",
+      "customerName": "عميل عام",
+      "customerPhone": "",
+      "notes": "",
+      "userId": 1,
+      "createdAt": "2026-03-22T22:55:42.717Z",
+      "updatedAt": "2026-03-22T22:55:42.717Z",
+      "status": "completed"
+    }
+  ],
+  "saleItems": [
+    {
+      "id": 1,
+      "saleId": 1,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": "699.95",
+      "subtotal": "699.95",
+      "createdAt": "2026-03-22T22:51:45.372Z"
+    },
+    {
+      "id": 2,
+      "saleId": 2,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": "699.95",
+      "subtotal": "699.95",
+      "createdAt": "2026-03-22T22:55:42.752Z"
+    }
+  ]
+}

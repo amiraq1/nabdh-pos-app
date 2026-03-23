@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import jsQR from "jsqr";
+import { BrowserMultiFormatReader, Exception } from "@zxing/library";
 import { Button } from "@/components/ui/button";
 import { X, Camera, Volume2, VolumeX } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,6 +20,7 @@ export default function BarcodeScanner({ isOpen, onClose, onBarcodeDetected, sou
   const [error, setError] = useState<string>("");
   const [isSoundEnabled, setIsSoundEnabled] = useState(soundEnabled);
   const scanningRef = useRef(false);
+  const codeReaderRef = useRef(new BrowserMultiFormatReader());
   const { playScanBeep, playSuccessBeep, playErrorBeep } = useAudioAlert();
 
   useEffect(() => {
@@ -34,87 +35,66 @@ export default function BarcodeScanner({ isOpen, onClose, onBarcodeDetected, sou
   const startScanning = async () => {
     try {
       setError("");
-      // Play scan start sound
-      if (isSoundEnabled) {
-        playScanBeep();
-      }
+      if (isSoundEnabled) playScanBeep();
+      
+      setIsScanning(true);
+      scanningRef.current = true;
+
+      // 1. Initiate camera using rock-solid native API
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "environment",
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
       });
 
       if (videoRef.current) {
+        // Force attachment of the media stream to the video element
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        setIsScanning(true);
-        scanningRef.current = true;
-        scan();
+        videoRef.current.play().catch((e) => {
+          if (e.name !== "AbortError") console.error("Video playback error:", e);
+        });
       }
+
+      // 2. Instruct ZXing to decode from our manually created stream
+      codeReaderRef.current.decodeFromStream(stream, videoRef.current as HTMLVideoElement, (result, err) => {
+        if (result && scanningRef.current) {
+          const barcode = result.getText();
+          if (barcode) {
+            scanningRef.current = false;
+            if (isSoundEnabled) playSuccessBeep();
+            if (navigator.vibrate) navigator.vibrate(200);
+            
+            onBarcodeDetected(barcode);
+            toast.success(`تم قراءة الكود: ${barcode}`);
+            stopScanning();
+            onClose();
+          }
+        }
+      });
+      
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "فشل الوصول إلى الكاميرا";
       setError(errorMessage);
-      // Play error sound
-      if (isSoundEnabled) {
-        playErrorBeep();
-      }
+      if (isSoundEnabled) playErrorBeep();
       toast.error("تأكد من السماح بالوصول إلى الكاميرا");
     }
   };
 
   const stopScanning = () => {
     scanningRef.current = false;
+    codeReaderRef.current.reset();
+    
+    // Explicitly shut down all media stream tracks
     if (videoRef.current && videoRef.current.srcObject) {
       const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
       tracks.forEach((track) => track.stop());
       videoRef.current.srcObject = null;
     }
+    
     setIsScanning(false);
-  };
-
-  const scan = () => {
-    if (!scanningRef.current || !videoRef.current || !canvasRef.current) return;
-
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    const ctx = canvas.getContext("2d");
-
-    if (!ctx) return;
-
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const code = jsQR(imageData.data, imageData.width, imageData.height, {
-      inversionAttempts: "dontInvert",
-    });
-
-    if (code) {
-      const barcode = code.data;
-      // Check if barcode is numeric (standard barcode format)
-      if (/^\d+$/.test(barcode)) {
-        // Play success sound
-        if (isSoundEnabled) {
-          playSuccessBeep();
-        }
-        onBarcodeDetected(barcode);
-        toast.success(`تم مسح الباركود: ${barcode}`);
-        stopScanning();
-        onClose();
-      }
-    }
-
-    if (scanningRef.current) {
-      requestAnimationFrame(scan);
-    }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent aria-describedby={undefined} className="max-w-md">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
@@ -160,6 +140,8 @@ export default function BarcodeScanner({ isOpen, onClose, onBarcodeDetected, sou
                 <video
                   ref={videoRef}
                   className="w-full h-full object-cover"
+                  autoPlay
+                  muted
                   playsInline
                 />
                 <canvas ref={canvasRef} className="hidden" />

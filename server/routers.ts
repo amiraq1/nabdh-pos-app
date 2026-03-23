@@ -4,6 +4,8 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
+import { sdk } from "./_core/sdk";
+import { ONE_YEAR_MS } from "@shared/const";
 
 export const appRouter = router({
   system: systemRouter,
@@ -16,6 +18,22 @@ export const appRouter = router({
         success: true,
       } as const;
     }),
+    loginByPin: publicProcedure
+      .input(z.string().length(4))
+      .mutation(async ({ input, ctx }) => {
+        const user = await db.getUserByPin(input);
+        if (!user) throw new Error("رقم التعريف غير صحيح");
+
+        const sessionToken = await sdk.createSessionToken(user.openId, {
+          name: user.name || "",
+          expiresInMs: ONE_YEAR_MS,
+        });
+
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
+        
+        return { success: true };
+      }),
   }),
 
   // ============ Categories Router ============
@@ -116,6 +134,19 @@ export const appRouter = router({
   analytics: router({
     dailyTotal: publicProcedure.input(z.date()).query(({ input }) => db.getDailySalesTotal(input)),
     topProducts: publicProcedure.input(z.number().default(10).optional()).query(({ input }) => db.getTopProducts(input)),
+  }),
+  // ============ Expenses Router ============
+  expenses: router({
+    list: publicProcedure.query(() => db.getExpenses()),
+    create: protectedProcedure
+      .input(z.object({
+        category: z.string(),
+        description: z.string(),
+        amount: z.string(),
+        date: z.date().optional(),
+      }))
+      .mutation(({ input }) => db.createExpense(input as any)),
+    delete: protectedProcedure.input(z.number()).mutation(({ input }) => db.deleteExpense(input)),
   }),
 });
 

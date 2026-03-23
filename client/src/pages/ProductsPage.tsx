@@ -6,14 +6,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Edit2, Trash2, Loader2, Search } from "lucide-react";
+import { Plus, Edit2, Trash2, Loader2, Search, Camera } from "lucide-react";
 import { toast } from "sonner";
+import BarcodeScanner from "@/components/BarcodeScanner";
+import { formatCurrency } from "@/lib/utils";
 
 export default function ProductsPage() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [formData, setFormData] = useState({
     categoryId: 0,
     name: "",
@@ -27,7 +30,9 @@ export default function ProductsPage() {
     minStockLevel: 10,
   });
 
-  const { data: products, isLoading: productsLoading, refetch: refetchProducts } = trpc.products.list.useQuery(selectedCategory ? parseInt(selectedCategory) : undefined);
+  const { data: products, isLoading: productsLoading, refetch: refetchProducts } = trpc.products.list.useQuery(
+    selectedCategory && selectedCategory !== "all" ? parseInt(selectedCategory) : undefined
+  );
   const { data: categories, isLoading: categoriesLoading } = trpc.categories.list.useQuery();
   const createMutation = trpc.products.create.useMutation();
   const updateMutation = trpc.products.update.useMutation();
@@ -160,16 +165,25 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <label className="text-sm font-medium text-foreground">الباركود</label>
-                  <Input
-                    value={formData.barcode}
-                    onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                    placeholder="مثال: 123456789"
-                  />
+                  <div className="flex gap-2">
+                    <Input
+                      value={formData.barcode}
+                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                      placeholder="مثال: 123456789"
+                    />
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      onClick={() => setIsScannerOpen(true)}
+                    >
+                      <Camera className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm font-medium text-foreground">السعر (ر.س)</label>
+                  <label className="text-sm font-medium text-foreground">السعر (د.ع)</label>
                   <Input
                     type="number"
                     step="0.01"
@@ -180,7 +194,7 @@ export default function ProductsPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-foreground">سعر التكلفة (ر.س)</label>
+                  <label className="text-sm font-medium text-foreground">سعر التكلفة (د.ع)</label>
                   <Input
                     type="number"
                     step="0.01"
@@ -249,7 +263,7 @@ export default function ProductsPage() {
             <SelectValue placeholder="جميع الفئات" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">جميع الفئات</SelectItem>
+            <SelectItem value="all">جميع الفئات</SelectItem>
             {categories?.map((cat: any) => (
               <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
             ))}
@@ -278,7 +292,7 @@ export default function ProductsPage() {
                 <tr key={product.id} className="border-b border-border/50 hover:bg-muted/50">
                   <td className="py-3 px-4">{product.name}</td>
                   <td className="py-3 px-4 text-foreground/60">{product.sku}</td>
-                  <td className="py-3 px-4">{parseFloat(product.price).toFixed(2)} ر.س</td>
+                  <td className="py-3 px-4">{formatCurrency(product.price)}</td>
                   <td className="py-3 px-4">
                     <span className={`px-2 py-1 rounded text-sm ${product.quantity < product.minStockLevel ? "bg-destructive/20 text-destructive" : "bg-accent/20 text-accent"}`}>
                       {product.quantity}
@@ -314,6 +328,14 @@ export default function ProductsPage() {
           </CardContent>
         </Card>
       )}
+
+      <BarcodeScanner
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onBarcodeDetected={(code) => {
+          setFormData({ ...formData, barcode: code });
+        }}
+      />
     </div>
   );
 }

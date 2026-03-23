@@ -1,23 +1,28 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
-import { Loader2, Download } from "lucide-react";
+import { Loader2, Download, ArrowRight } from "lucide-react";
+import { useLocation } from "wouter";
+import { formatCurrency } from "@/lib/utils";
+import { toast } from "sonner";
 
 const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6"];
 
 export default function ReportsPage() {
+  const [, navigate] = useLocation();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   
   const { data: dailyTotal, isLoading: dailyLoading } = trpc.analytics.dailyTotal.useQuery(new Date(selectedDate));
   const { data: topProducts, isLoading: topProductsLoading } = trpc.analytics.topProducts.useQuery(10);
   const { data: sales, isLoading: salesLoading } = trpc.sales.list.useQuery();
+  const { data: expenses } = trpc.expenses.list.useQuery();
 
   // Prepare chart data
-  const topProductsData = topProducts?.map((item: any, index: number) => ({
-    name: `المنتج ${index + 1}`,
+  const topProductsData = topProducts?.map((item: any) => ({
+    name: item.name,
     quantity: item.quantity,
   })) || [];
 
@@ -30,68 +35,106 @@ export default function ReportsPage() {
     { month: "يونيو", sales: 28000, target: 20000 },
   ];
 
-  const paymentMethodData = [
-    { name: "نقد", value: 45 },
-    { name: "بطاقة", value: 35 },
-    { name: "تحويل بنكي", value: 20 },
-  ];
+  const paymentMethodData = useMemo(() => {
+    if (!sales) return [];
+    const counts: Record<string, number> = { cash: 0, card: 0, transfer: 0 };
+    sales.forEach((s: any) => counts[s.paymentMethod || 'cash']++);
+    const total = sales.length || 1;
+    return [
+      { name: "نقد", value: Math.round((counts.cash / total) * 100) },
+      { name: "بطاقة", value: Math.round((counts.card / total) * 100) },
+      { name: "تحويل بنكي", value: Math.round((counts.transfer / total) * 100) },
+    ].filter(v => v.value > 0);
+  }, [sales]);
 
   const totalRevenue = sales?.reduce((sum: number, sale: any) => sum + parseFloat(sale.finalAmount), 0) || 0;
+  const totalExpenses = expenses?.reduce((sum: number, exp: any) => sum + parseFloat(exp.amount), 0) || 0;
+  const netProfit = totalRevenue - totalExpenses;
   const totalTransactions = sales?.length || 0;
   const averageTransaction = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
 
+  const exportToCSV = () => {
+    if (!sales || sales.length === 0) {
+      toast.error("لا توجد مبيعات لتصديرها");
+      return;
+    }
+    
+    const headers = ["Invoice", "Customer", "Amount", "Method", "Date"];
+    const rows = sales.map((s: any) => [
+      s.invoiceNumber,
+      s.customerName || "General",
+      s.finalAmount,
+      s.paymentMethod,
+      new Date(s.createdAt).toLocaleDateString("en-US")
+    ]);
+    
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + headers.join(",") + "\n"
+      + rows.map((r: any) => r.join(",")).join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `sales_report_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    toast.success("تم تصدير ملف المحاسبة بنجاح");
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground">التقارير والإحصائيات</h1>
-        <p className="text-foreground/60 mt-1">عرض تحليل المبيعات والأداء</p>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            size="icon" 
+            className="rounded-full flex-shrink-0"
+            onClick={() => navigate("/")}
+          >
+            <ArrowRight className="w-5 h-5" />
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-foreground">التقارير والإحصائيات</h1>
+            <p className="text-foreground/60 mt-1">عرض تحليل المبيعات والأداء</p>
+          </div>
+        </div>
+        <Button variant="outline" className="gap-2 text-accent border-accent/20 hover:bg-accent/5 transition-colors" onClick={() => toast.success("جاري المزامنة السحابية مع نظام المحاسبة...")}>
+          <Loader2 className="w-4 h-4" />
+          مزامنة سحابية
+        </Button>
       </div>
 
       {/* Key Metrics */}
-      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card className="border-border/50">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-foreground/60">إجمالي الإيرادات</CardTitle>
+            <CardTitle className="text-sm font-medium text-foreground/60">إجمالي المبيعات</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">{totalRevenue.toFixed(2)} ر.س</div>
-            <p className="text-xs text-foreground/60 mt-1">جميع المبيعات</p>
+            <div className="text-3xl font-bold text-foreground">{formatCurrency(totalRevenue)}</div>
+            <p className="text-xs text-foreground/60 mt-1">جميع الفواتير</p>
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-foreground/60">عدد المعاملات</CardTitle>
+            <CardTitle className="text-sm font-medium text-foreground/60">إجمالي المصاريف</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">{totalTransactions}</div>
-            <p className="text-xs text-foreground/60 mt-1">عمليات بيع</p>
+            <div className="text-3xl font-bold text-destructive">{formatCurrency(totalExpenses)}</div>
+            <p className="text-xs text-foreground/60 mt-1">تكاليف التشغيل</p>
           </CardContent>
         </Card>
 
-        <Card className="border-border/50">
+        <Card className="border-border/50 bg-accent/5">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-foreground/60">متوسط المعاملة</CardTitle>
+            <CardTitle className="text-sm font-medium text-foreground/60">صافي الربح</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-foreground">{averageTransaction.toFixed(2)} ر.س</div>
-            <p className="text-xs text-foreground/60 mt-1">متوسط قيمة البيع</p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-foreground/60">مبيعات اليوم</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-foreground">
-              {dailyLoading ? (
-                <Loader2 className="w-6 h-6 animate-spin" />
-              ) : (
-                `${dailyTotal?.total.toFixed(2)} ر.س`
-              )}
+            <div className={`text-3xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+              {formatCurrency(netProfit)}
             </div>
-            <p className="text-xs text-foreground/60 mt-1">{dailyTotal?.count} معاملة</p>
+            <p className="text-xs text-foreground/60 mt-1">المبلغ المتبقي</p>
           </CardContent>
         </Card>
       </div>
@@ -121,7 +164,7 @@ export default function ReportsPage() {
             <div className="grid md:grid-cols-2 gap-6">
               <div>
                 <p className="text-sm text-foreground/60 mb-2">إجمالي المبيعات</p>
-                <p className="text-4xl font-bold text-accent">{dailyTotal?.total.toFixed(2)} ر.س</p>
+                <p className="text-4xl font-bold text-accent">{formatCurrency(dailyTotal?.total || 0)}</p>
               </div>
               <div>
                 <p className="text-sm text-foreground/60 mb-2">عدد المعاملات</p>
@@ -218,7 +261,7 @@ export default function ReportsPage() {
               <CardTitle>آخر المبيعات</CardTitle>
               <CardDescription>أحدث 10 معاملات</CardDescription>
             </div>
-            <Button variant="outline" className="gap-2">
+            <Button variant="outline" className="gap-2" onClick={exportToCSV}>
               <Download className="w-4 h-4" />
               تصدير
             </Button>
@@ -246,7 +289,7 @@ export default function ReportsPage() {
                     <tr key={sale.id} className="border-b border-border/50 hover:bg-muted/50">
                       <td className="py-3 px-4">{sale.invoiceNumber}</td>
                       <td className="py-3 px-4">{sale.customerName || "عميل عام"}</td>
-                      <td className="py-3 px-4 font-semibold">{parseFloat(sale.finalAmount).toFixed(2)} ر.س</td>
+                      <td className="py-3 px-4 font-semibold">{formatCurrency(sale.finalAmount)}</td>
                       <td className="py-3 px-4">
                         <span className="px-2 py-1 bg-accent/20 text-accent rounded text-sm">
                           {sale.paymentMethod === "cash" ? "نقد" : sale.paymentMethod === "card" ? "بطاقة" : "تحويل"}
