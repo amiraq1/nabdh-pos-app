@@ -11,6 +11,7 @@ import InventoryPage from "./pages/InventoryPage";
 import POSPage from "./pages/POSPage";
 import ReportsPage from "./pages/ReportsPage";
 import ExpensesPage from "./pages/ExpensesPage";
+import ProfilePage from "./pages/ProfilePage";
 
 function Router() {
   return (
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/inventory" component={InventoryPage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/expenses" component={ExpensesPage} />
+      <Route path="/profile" component={ProfilePage} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />
     </Switch>

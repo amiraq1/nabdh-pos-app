@@ -1,11 +1,13 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, useDeferredValue, useEffect } from "react";
+import { motion, AnimatePresence, PanInfo } from "framer-motion";
+import { thermalPrinter } from "@/lib/bluetooth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Trash2, Loader2, Search, Plus, Minus, Barcode, Printer, Send, CheckCircle2, ArrowRight } from "lucide-react";
+import { Trash2, Loader2, Search, Plus, Minus, Barcode, Printer, Send, CheckCircle2, ArrowRight, ShoppingCart } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import BarcodeScanner from "@/components/BarcodeScanner";
@@ -35,6 +37,7 @@ export default function POSPage() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [completedInvoice, setCompletedInvoice] = useState<any>(null);
+  const [touchStartPos, setTouchStartPos] = useState<{ x: number, y: number } | null>(null);
 
   const { data: products, isLoading: productsLoading } = trpc.products.list.useQuery(
     selectedCategory && selectedCategory !== "all" ? parseInt(selectedCategory) : undefined
@@ -45,13 +48,15 @@ export default function POSPage() {
   const updateProductMutation = trpc.products.update.useMutation();
   const utils = trpc.useUtils();
 
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+
   const filteredProducts = useMemo(() => {
     return products?.filter((p: any) =>
-      p.name.includes(searchTerm) || p.sku.includes(searchTerm) || p.barcode?.includes(searchTerm)
+      p.name.includes(deferredSearchTerm) || p.sku.includes(deferredSearchTerm) || p.barcode?.includes(deferredSearchTerm)
     ) || [];
-  }, [products, searchTerm]);
+  }, [products, deferredSearchTerm]);
 
-  const addToCart = (product: any) => {
+  const addToCart = useCallback((product: any) => {
     native.vibrate();
     if (product.quantity <= 0) {
       toast.error("المنتج غير متوفر في المخزون");
@@ -78,24 +83,31 @@ export default function POSPage() {
         subtotal: parseFloat(product.price),
       }]);
     }
-    toast.success("تم إضافة المنتج إلى السلة");
-  };
+    toast.success("تم إضافة المنتج إلى السلة", { duration: 1500 });
+  }, [cart]);
 
-  const removeFromCart = (productId: number) => {
-    setCart(cart.filter(item => item.productId !== productId));
-  };
+  const removeFromCart = useCallback((productId: number) => {
+    setCart((current) => current.filter(item => item.productId !== productId));
+  }, []);
 
-  const updateQuantity = (productId: number, quantity: number) => {
+  const updateQuantity = useCallback((productId: number, quantity: number) => {
     if (quantity <= 0) {
       removeFromCart(productId);
       return;
     }
-    setCart(cart.map(item =>
+    setCart((current) => current.map(item =>
       item.productId === productId
         ? { ...item, quantity, subtotal: quantity * item.price }
         : item
     ));
-  };
+  }, [removeFromCart]);
+
+  const handleSwipeDelete = useCallback((info: PanInfo, productId: number) => {
+    // إيماءة الحذف إذا تم السحب يميناً أو يساراً بمقدار يتجاوز 80 بكسل
+    if (info.offset.x > 80 || info.offset.x < -80) {
+      removeFromCart(productId);
+    }
+  }, [removeFromCart]);
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.subtotal, 0), [cart]);
   const discountAmount = useMemo(() => {
@@ -104,7 +116,7 @@ export default function POSPage() {
   const total = useMemo(() => subtotal - discountAmount, [subtotal, discountAmount]);
   const taxAmount = 0;
 
-  const handleBarcodeDetected = (barcode: string) => {
+  const handleBarcodeDetected = useCallback((barcode: string) => {
     // Find product by barcode
     const product = products?.find((p: any) => p.barcode === barcode);
     if (product) {
@@ -112,7 +124,7 @@ export default function POSPage() {
     } else {
       toast.error("المنتج غير موجود");
     }
-  };
+  }, [products, addToCart]);
 
   const handleCheckout = async () => {
     if (cart.length === 0) {
@@ -181,38 +193,69 @@ export default function POSPage() {
     }
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartPos({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!touchStartPos) return;
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    
+    const deltaX = touchStartPos.x - touchEndX;
+    const deltaY = Math.abs(touchStartPos.y - touchEndY);
+    
+    // إذا كان السحب أفقياً (أكبر من 100 بكسل) ولم يكن مائلاً كثيراً عمودياً
+    if (Math.abs(deltaX) > 100 && deltaY < 50) {
+      // التحقق مما إذا كان السحب قد بدأ من حواف الشاشة (أول 50 بكسل من اليمين أو اليسار)
+      const isFromLeftEdge = touchStartPos.x < 50;
+      const isFromRightEdge = touchStartPos.x > window.innerWidth - 50;
+      
+      if (isFromLeftEdge || isFromRightEdge) {
+        native.vibrate();
+        navigate("/"); // الخروج والعودة للرئيسية
+      }
+    }
+    setTouchStartPos(null);
+  };
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div 
+      className="min-h-screen" 
+      onTouchStart={handleTouchStart} 
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Products Section */}
+      <div className="space-y-4 pb-20 lg:pb-0 lg:grid lg:grid-cols-3 lg:gap-6">
       <div className="lg:col-span-2 space-y-4">
-        <div className="mb-6 flex items-center gap-4">
+        <div className="mb-4 flex items-center gap-3">
           <Button 
             variant="outline" 
             size="icon" 
-            className="rounded-full flex-shrink-0"
+            className="rounded-full flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10"
             onClick={() => navigate("/")}
           >
-            <ArrowRight className="w-5 h-5" />
+            <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
           </Button>
           <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-foreground">نقطة البيع</h1>
-            <p className="text-foreground/50 mt-1 font-medium text-sm">تجربة بيع سلسة، سريعة، وأنيقة.</p>
+            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-foreground">نقطة البيع</h1>
+            <p className="text-foreground/50 mt-0.5 font-medium text-xs sm:text-sm">تجربة بيع سلسة، سريعة، وأنيقة.</p>
           </div>
         </div>
 
         {/* Search and Filter */}
-        <div className="flex gap-4">
-          <div className="flex-1 relative">
+        <div className="flex flex-wrap gap-2 sm:gap-4">
+          <div className="flex-1 min-w-[180px] relative">
             <Search className="absolute right-3 top-3 w-4 h-4 text-foreground/40" />
             <Input
-              placeholder="ابحث بالاسم أو SKU أو الباركود..."
+              placeholder="ابحث بالاسم أو الباركود..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-4 pr-10"
             />
           </div>
           <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-32 sm:w-48">
               <SelectValue placeholder="جميع الفئات" />
             </SelectTrigger>
             <SelectContent>
@@ -226,9 +269,9 @@ export default function POSPage() {
             onClick={() => setShowBarcodeScanner(true)}
             className="gap-2"
             variant="outline"
+            size="icon"
           >
             <Barcode className="w-4 h-4" />
-            مسح الباركود
           </Button>
         </div>
 
@@ -238,12 +281,16 @@ export default function POSPage() {
             <Loader2 className="w-8 h-8 animate-spin text-accent" />
           </div>
         ) : filteredProducts.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-4">
             {filteredProducts.map((product: any) => (
               <Card
                 key={product.id}
                 className="border-border/50 hover:shadow-lg transition-all cursor-pointer"
-                onClick={() => addToCart(product)}
+                onClick={(e) => {
+                  /* Prevent double tap zooming and phantom clicks */
+                  e.preventDefault();
+                  addToCart(product);
+                }}
               >
                 {product.imageUrl && (
                   <img src={product.imageUrl} alt={product.name} className="w-full h-32 object-cover rounded-t-lg" />
@@ -270,8 +317,8 @@ export default function POSPage() {
         )}
       </div>
 
-      {/* Cart Section */}
-      <div className="space-y-4">
+      {/* Cart Section - hidden on mobile, shown on desktop */}
+      <div className="hidden lg:block space-y-4">
         <Card className="border-border/30 bg-background/50 backdrop-blur-xl shadow-2xl sticky top-4">
           <CardHeader>
             <CardTitle>السلة</CardTitle>
@@ -279,51 +326,84 @@ export default function POSPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Cart Items */}
-            <div className="space-y-3 max-h-64 overflow-y-auto">
-              {cart.length > 0 ? (
-                cart.map((item) => (
-                  <div key={item.productId} className="p-4 bg-background/60 shadow-sm border border-border/40 rounded-xl hover:border-accent/40 transition-colors">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-semibold text-foreground text-sm">{item.name}</p>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeFromCart(item.productId)}
+            <div className="space-y-3 max-h-[60vh] lg:max-h-64 overflow-y-auto overflow-x-hidden p-1">
+              <AnimatePresence mode="popLayout">
+                {cart.length > 0 ? (
+                  cart.map((item) => (
+                    <motion.div
+                      layout
+                      initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, x: -100, scale: 0.8 }}
+                      transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                      key={item.productId}
+                      className="relative rounded-xl overflow-hidden"
+                    >
+                      {/* خلفية الحذف الحمراء تظهر تحت العنصر أُثناء السحب */}
+                      <div className="absolute inset-0 bg-destructive flex items-center justify-between px-4 rounded-xl">
+                        <Trash2 className="w-5 h-5 text-destructive-foreground animate-pulse" />
+                        <Trash2 className="w-5 h-5 text-destructive-foreground animate-pulse" />
+                      </div>
+                      
+                      <motion.div 
+                        drag="x"
+                        dragConstraints={{ left: 0, right: 0 }}
+                        dragElastic={0.6}
+                        onDragEnd={(_, info) => handleSwipeDelete(info, item.productId)}
+                        className="p-4 bg-background/95 backdrop-blur-sm shadow-sm border border-border/40 rounded-xl relative z-10 touch-pan-y"
                       >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs text-foreground/60">{formatCurrency(item.price)}</p>
-                      <p className="font-bold text-accent">{formatCurrency(item.subtotal)}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                      >
-                        <Minus className="w-3 h-3" />
-                      </Button>
-                      <Input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateQuantity(item.productId, parseInt(e.target.value))}
-                        className="text-center h-8 w-12"
-                      />
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                      >
-                        <Plus className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-foreground/60 text-center py-8">السلة فارغة</p>
-              )}
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="font-semibold text-foreground text-sm">{item.name}</p>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8"
+                            onClick={() => removeFromCart(item.productId)}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs text-foreground/60">{formatCurrency(item.price)}</p>
+                          <p className="font-bold text-accent">{formatCurrency(item.subtotal)}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-10 sm:w-8"
+                            onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                          >
+                            <Minus className="w-3 h-3" />
+                          </Button>
+                          <Input
+                            type="number"
+                            value={item.quantity}
+                            readOnly
+                            className="text-center h-8 w-14 sm:w-12 text-sm font-bold bg-muted/50"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-10 sm:w-8"
+                            onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                          >
+                            <Plus className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </motion.div>
+                    </motion.div>
+                  ))
+                ) : (
+                  <motion.p 
+                    initial={{ opacity: 0 }} 
+                    animate={{ opacity: 1 }} 
+                    className="text-foreground/60 text-center py-8"
+                  >
+                    السلة فارغة
+                  </motion.p>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Summary */}
@@ -353,6 +433,22 @@ export default function POSPage() {
             </Button>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Mobile Floating Cart Button */}
+      {cart.length > 0 && (
+        <div className="fixed bottom-4 left-4 right-4 lg:hidden z-40">
+          <Button
+            className="w-full h-14 text-lg font-bold shadow-2xl shadow-accent/30 rounded-2xl gap-3"
+            onClick={() => setShowCheckout(true)}
+          >
+            <ShoppingCart className="w-5 h-5" />
+            <span>إتمام البيع</span>
+            <span className="bg-white/20 px-2.5 py-0.5 rounded-full text-sm">{cart.length}</span>
+            <span className="mr-auto font-bold">{formatCurrency(total)}</span>
+          </Button>
+        </div>
+      )}
       </div>
 
       {/* Checkout Dialog */}
@@ -422,20 +518,27 @@ export default function POSPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 no-print">
+              <div className="flex flex-col sm:flex-row gap-3 no-print">
+                <Button 
+                  className="flex-1 gap-2 bg-accent hover:bg-accent/90 text-accent-foreground border-transparent shadow-lg shadow-accent/20" 
+                  onClick={async () => {
+                    try {
+                        toast.loading("جاري الاتصال بالطابعة...", { id: "bt-print" });
+                        await thermalPrinter.printRasterReceipt(completedInvoice);
+                        toast.success("تم الإرسال للطابعة بنجاح 🖨️", { id: "bt-print" });
+                    } catch (e: any) {
+                        toast.error(e.message || "فشلت عملية الطباعة. تأكد من تفعيل البلوتوث", { id: "bt-print" });
+                    }
+                  }}
+                >
+                  <Printer className="w-4 h-4" /> طباعة البلوتوث
+                </Button>
                 <Button 
                   className="flex-1 gap-2" 
                   variant="outline" 
                   onClick={() => window.print()}
                 >
-                  <Printer className="w-4 h-4" /> طباعة
-                </Button>
-                <Button 
-                  className="flex-1 gap-2 border-green-500 text-green-600 hover:bg-green-50 hover:text-green-700" 
-                  variant="outline" 
-                  onClick={() => toast.success("تم إرسال إشعار للعميل عبر SMS: طلبك قيد التجهيز")}
-                >
-                  <Send className="w-4 h-4" /> إشعار العميل
+                  <Printer className="w-4 h-4" /> طباعة سلكية / PDF
                 </Button>
               </div>
               

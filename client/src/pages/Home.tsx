@@ -7,7 +7,7 @@ import { useLocation } from "wouter";
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, UserCircle } from "lucide-react";
 import { native } from "@/_core/native";
 
 export default function Home() {
@@ -132,13 +132,13 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-background to-muted">
       {/* Header */}
       <header className="border-b border-border/50 backdrop-blur-sm sticky top-0 z-50 bg-card/95">
-        <div className="container mx-auto px-4 py-4 flex items-center justify-between">
+        <div className="container mx-auto px-3 sm:px-4 py-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
-              <ShoppingCart className="w-6 h-6 text-accent-foreground" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-accent rounded-lg flex items-center justify-center">
+              <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6 text-accent-foreground" />
             </div>
-            <h1 className="text-2xl font-bold text-foreground">Nabdh POS</h1>
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-accent/5 border border-accent/10">
+            <h1 className="text-lg sm:text-2xl font-bold text-foreground">Nabdh POS</h1>
+            <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded bg-accent/5 border border-accent/10">
               <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
               <span className="text-[10px] font-bold text-accent uppercase tracking-wider">
                 {native.isNative ? 'التطبيق الأصلي' : 'عبر الويب'}
@@ -146,15 +146,13 @@ export default function Home() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-foreground/70">{user?.name}</span>
             <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => logout()}
-              className="gap-2"
+              variant="outline" 
+              className="gap-2 rounded-full px-4 h-10 border-border/50 hover:bg-accent/10 hover:text-accent hover:border-accent/30 transition-all font-bold"
+              onClick={() => navigate("/profile")}
             >
-              <LogOut className="w-4 h-4" />
-              خروج
+              <UserCircle className="w-5 h-5" />
+              <span className="text-sm">{user?.name}</span>
             </Button>
           </div>
         </div>
@@ -162,13 +160,13 @@ export default function Home() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h2 className="text-3xl font-bold text-foreground mb-2">مرحباً بك</h2>
-          <p className="text-foreground/60">اختر ما تريد إنجازه من القائمة أعلاه</p>
+        <div className="mb-6">
+          <h2 className="text-2xl sm:text-3xl font-bold text-foreground mb-1">مرحباً بك</h2>
+          <p className="text-foreground/60 text-sm">اختر ما تريد إنجازه</p>
         </div>
 
         {/* Quick Actions */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6">
           <Card 
             className="border-border/50 hover:shadow-lg transition-all cursor-pointer hover:border-accent/50"
             onClick={() => navigate("/pos")}
