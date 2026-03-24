@@ -1,4 +1,4 @@
-import { eq, and, gte, lte } from "drizzle-orm";
+import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, categories, products, stockHistory, sales, saleItems, Category, InsertCategory, Product, InsertProduct, InsertStockHistory, Sale, InsertSale, SaleItem, InsertSaleItem, User, expenses, InsertExpense } from "../drizzle/schema";
 import { ENV } from './_core/env';
@@ -298,6 +298,80 @@ export async function createSale(input: InsertSale) {
   data.sales.push(newSale);
   saveMockDb(data);
   return { insertId: newSale.id };
+}
+
+// ============ Checkout Transaction ============
+export async function checkoutTransaction(
+  saleInput: InsertSale,
+  itemsInput: Omit<InsertSaleItem, "saleId">[]
+) {
+  const db = await getDb();
+
+  if (db) {
+    return await db.transaction(async tx => {
+      const [saleResult] = await tx.insert(sales).values(saleInput);
+      const saleId = (saleResult as any).insertId;
+
+      for (const item of itemsInput) {
+        await tx.insert(saleItems).values({ ...item, saleId });
+
+        await tx
+          .update(products)
+          .set({ quantity: sql`${products.quantity} - ${item.quantity}` })
+          .where(eq(products.id, item.productId));
+
+        await tx.insert(stockHistory).values({
+          productId: item.productId,
+          quantityChange: -item.quantity,
+          reason: "sale",
+          notes: `فاتورة مبيعات رقم: ${saleInput.invoiceNumber}`,
+        });
+      }
+
+      return { saleId };
+    });
+  }
+
+  const data = loadMockDb();
+
+  const newSale = {
+    id: data.sales.length + 1,
+    ...saleInput,
+    totalAmount: saleInput.totalAmount.toString(),
+    finalAmount: saleInput.finalAmount.toString(),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    status: "completed",
+  };
+  data.sales.push(newSale);
+
+  for (const item of itemsInput) {
+    data.saleItems.push({
+      id: data.saleItems.length + 1,
+      ...item,
+      saleId: newSale.id,
+      unitPrice: item.unitPrice.toString(),
+      subtotal: item.subtotal.toString(),
+      createdAt: new Date(),
+    });
+
+    const productIdx = data.products.findIndex((p: any) => p.id === item.productId);
+    if (productIdx !== -1) {
+      data.products[productIdx].quantity -= item.quantity;
+    }
+
+    data.stockHistory.push({
+      id: data.stockHistory.length + 1,
+      productId: item.productId,
+      quantityChange: -item.quantity,
+      reason: "sale",
+      notes: `فاتورة مبيعات رقم: ${saleInput.invoiceNumber}`,
+      createdAt: new Date(),
+    });
+  }
+
+  saveMockDb(data);
+  return { saleId: newSale.id };
 }
 
 // ============ Sale Items Queries ============

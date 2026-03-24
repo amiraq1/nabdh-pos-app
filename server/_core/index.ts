@@ -9,6 +9,52 @@ import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+const PRIVATE_IPV4_PATTERNS = [
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[0-1])\./,
+];
+
+function getConfiguredCorsOrigins() {
+  return new Set(
+    (process.env.CORS_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map(origin => origin.trim())
+      .filter(Boolean)
+  );
+}
+
+function isPrivateNetworkHost(hostname: string) {
+  return PRIVATE_IPV4_PATTERNS.some(pattern => pattern.test(hostname));
+}
+
+function isAllowedDevOrigin(origin: string) {
+  if (origin === "capacitor://localhost" || origin === "ionic://localhost") {
+    return true;
+  }
+
+  try {
+    const url = new URL(origin);
+
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return false;
+    }
+
+    return LOCAL_HOSTS.has(url.hostname) || isPrivateNetworkHost(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedCorsOrigin(origin: string, configuredOrigins: Set<string>) {
+  if (configuredOrigins.has(origin)) {
+    return true;
+  }
+
+  return process.env.NODE_ENV !== "production" && isAllowedDevOrigin(origin);
+}
+
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
     const server = net.createServer();
@@ -31,17 +77,32 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  const configuredCorsOrigins = getConfiguredCorsOrigins();
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   
   // CORS Middleware for Mobile Connectivity
   app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
+    const origin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+
+    if (origin && isAllowedCorsOrigin(origin, configuredCorsOrigins)) {
+      res.header("Access-Control-Allow-Origin", origin);
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header("Vary", "Origin");
+    }
+
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, trpc-batch-mode");
+    const requestedHeaders = req.headers["access-control-request-headers"];
+    res.header(
+      "Access-Control-Allow-Headers",
+      Array.isArray(requestedHeaders)
+        ? requestedHeaders.join(", ")
+        : requestedHeaders ||
+            "Origin, X-Requested-With, Content-Type, Accept, Authorization, trpc-batch-mode"
+    );
     if (req.method === "OPTIONS") {
-      res.sendStatus(200);
+      res.sendStatus(204);
       return;
     }
     next();

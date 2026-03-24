@@ -1,11 +1,101 @@
 // @ts-nocheck
+import { RETURN_POLICIES, STORE_BRANCHES, STORE_NAME } from "@/lib/invoice";
+import { formatCurrency } from "@/lib/utils";
+
+class BluetoothPrinterError extends Error {
+  code: string;
+
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = "BluetoothPrinterError";
+    this.code = code;
+  }
+}
+
+const isDomException = (error: unknown): error is DOMException =>
+  typeof DOMException !== "undefined" && error instanceof DOMException;
+
+const normalizeBluetoothError = (error: unknown) => {
+  if (isDomException(error)) {
+    if (error.name === "NotFoundError") {
+      return new BluetoothPrinterError("تم إلغاء اختيار الطابعة", "cancelled");
+    }
+
+    if (error.name === "NotSupportedError") {
+      return new BluetoothPrinterError("هذا المتصفح لا يدعم طباعة البلوتوث", "unsupported");
+    }
+
+    if (error.name === "SecurityError") {
+      return new BluetoothPrinterError("يتطلب البلوتوث تشغيل التطبيق عبر localhost أو HTTPS", "security");
+    }
+  }
+
+  if (error instanceof Error) {
+    return new BluetoothPrinterError(error.message, "connection_failed");
+  }
+
+  return new BluetoothPrinterError("تعذر الاتصال بطابعة البلوتوث", "connection_failed");
+};
+
+const drawCenteredWrappedText = (
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  centerX: number,
+  startY: number,
+  maxWidth: number,
+  lineHeight: number
+) => {
+  const words = text.split(" ");
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    const nextLine = currentLine ? `${currentLine} ${word}` : word;
+    if (ctx.measureText(nextLine).width > maxWidth && currentLine) {
+      lines.push(currentLine);
+      currentLine = word;
+    } else {
+      currentLine = nextLine;
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+
+  ctx.textAlign = "center";
+  lines.forEach((line, index) => {
+    ctx.fillText(line, centerX, startY + (index * lineHeight));
+  });
+
+  return startY + (lines.length * lineHeight);
+};
+
 export class BluetoothPrinter {
   device: BluetoothDevice | null = null;
   server: BluetoothRemoteGATTServer | null = null;
   characteristic: BluetoothRemoteGATTCharacteristic | null = null;
 
+  resetConnection() {
+    if (this.server?.connected) {
+      this.server.disconnect();
+    }
+
+    this.device = null;
+    this.server = null;
+    this.characteristic = null;
+  }
+
   async connect() {
+    if (!navigator.bluetooth) {
+      throw new BluetoothPrinterError("هذا المتصفح لا يدعم البلوتوث", "unsupported");
+    }
+
     try {
+      if (this.server?.connected && this.characteristic) {
+        return true;
+      }
+
       this.device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [
@@ -31,8 +121,14 @@ export class BluetoothPrinter {
       }
       throw new Error("No writable characteristic found available on device.");
     } catch (e) {
-      console.error("Bluetooth pairing rejected or failed:", e);
-      throw e;
+      const normalizedError = normalizeBluetoothError(e);
+      this.resetConnection();
+
+      if (normalizedError.code !== "cancelled") {
+        console.error("Bluetooth printer connection failed:", e);
+      }
+
+      throw normalizedError;
     }
   }
 
@@ -47,7 +143,7 @@ export class BluetoothPrinter {
     
     // Standard 58mm thermal printer width (384 dots)
     canvas.width = 384; 
-    canvas.height = 350 + (invoice.cartItems.length * 50); 
+    canvas.height = 520 + (invoice.cartItems.length * 60);
     
     // Fill white background
     ctx.fillStyle = "white";
@@ -58,15 +154,24 @@ export class BluetoothPrinter {
     
     // Brand Header
     ctx.font = "bold 32px Cairo, Arial, sans-serif";
-    ctx.fillText("نـبـض POS", 192, 50);
-    
+    ctx.fillText(STORE_NAME, 192, 48);
+
+    ctx.font = "18px Cairo, Arial, sans-serif";
+    let y = drawCenteredWrappedText(ctx, `الفروع: ${STORE_BRANCHES.join("، ")}`, 192, 80, 320, 24) + 8;
+
+    ctx.fillRect(20, y, 344, 2);
+    y += 34;
+
     ctx.font = "20px Cairo, Arial, sans-serif";
-    ctx.fillText("فاتورة: " + invoice.invoiceNumber, 192, 90);
-    
-    // Divider
-    ctx.fillRect(20, 110, 344, 2);
-    
-    let y = 150;
+    ctx.fillText(`فاتورة: ${invoice.invoiceNumber}`, 192, y);
+    y += 28;
+
+    ctx.font = "16px Cairo, Arial, sans-serif";
+    ctx.fillText(new Date().toLocaleString("ar-SA", { dateStyle: "short", timeStyle: "short" }), 192, y);
+    y += 24;
+
+    ctx.fillRect(20, y, 344, 2);
+    y += 40;
     
     // Products Grid
     for (const item of invoice.cartItems) {
@@ -91,11 +196,22 @@ export class BluetoothPrinter {
     // Totals
     ctx.font = "bold 26px Cairo, Arial, sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("الإجمالي: " + invoice.total + " د.ع", 192, y);
+    ctx.fillText(`الإجمالي: ${formatCurrency(invoice.total)}`, 192, y);
+    y += 40;
+
+    ctx.font = "bold 18px Cairo, Arial, sans-serif";
+    ctx.fillText("سياسة الإرجاع", 192, y);
+    y += 28;
+
+    ctx.font = "16px Cairo, Arial, sans-serif";
+    for (const policy of RETURN_POLICIES) {
+      y = drawCenteredWrappedText(ctx, policy, 192, y, 320, 22) + 4;
+    }
+    y += 10;
 
     // Courtesy text
     ctx.font = "18px Cairo, Arial, sans-serif";
-    ctx.fillText("شكراً لزيارتكم", 192, y + 50);
+    ctx.fillText("شكراً لزيارتكم", 192, y + 26);
 
     /* 2. Image Processing to 1-Bit Monochrome for ESC/POS */
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);

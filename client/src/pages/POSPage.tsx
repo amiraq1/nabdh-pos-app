@@ -11,6 +11,7 @@ import { Trash2, Loader2, Search, Plus, Minus, Barcode, Printer, CheckCircle2, A
 import { useLocation } from "wouter";
 import { toast } from "sonner";
 import BarcodeScanner from "@/components/BarcodeScanner";
+import { RETURN_POLICIES, STORE_BRANCHES, STORE_NAME } from "@/lib/invoice";
 import { formatCurrency } from "@/lib/utils";
 import { native } from "@/_core/native";
 
@@ -20,6 +21,25 @@ interface CartItem {
   price: number;
   quantity: number;
   subtotal: number;
+}
+
+const EDGE_SWIPE_ZONE_PX = 32;
+
+function shouldTrackEdgeSwipe(target: EventTarget | null, touchX: number) {
+  const isNearEdge =
+    touchX <= EDGE_SWIPE_ZONE_PX || touchX >= window.innerWidth - EDGE_SWIPE_ZONE_PX;
+
+  if (!isNearEdge) {
+    return false;
+  }
+
+  if (!(target instanceof Element)) {
+    return true;
+  }
+
+  return !target.closest(
+    "button, a, input, textarea, select, [role='button'], [data-no-edge-swipe], [contenteditable='true']"
+  );
 }
 
 export default function POSPage() {
@@ -43,9 +63,7 @@ export default function POSPage() {
     selectedCategory && selectedCategory !== "all" ? parseInt(selectedCategory) : undefined
   );
   const { data: categories } = trpc.categories.list.useQuery();
-  const createSaleMutation = trpc.sales.create.useMutation();
-  const addItemMutation = trpc.sales.addItem.useMutation();
-  const updateProductMutation = trpc.products.update.useMutation();
+  const checkoutMutation = trpc.sales.checkout.useMutation();
   const utils = trpc.useUtils();
 
   const deferredSearchTerm = useDeferredValue(searchTerm);
@@ -89,7 +107,7 @@ export default function POSPage() {
     });
   }, []);
 
-  const handleBarcodeDetected = useCallback((barcode: string) => {
+  const handleBarcodeDetectedLocal = useCallback((barcode: string) => {
     if (!products) return;
     const product = products.find((p: any) => p.barcode === barcode || p.sku === barcode);
     if (product) {
@@ -98,6 +116,41 @@ export default function POSPage() {
       toast.error(`الرقم ${barcode} غير معرّف في النظام`, { className: "font-display" });
     }
   }, [products, addToCart]);
+
+  const handleBarcodeDetected = useCallback(async (barcode: string) => {
+    const trimmedCode = barcode.trim();
+
+    if (!trimmedCode) {
+      return;
+    }
+
+    const productFromVisibleList = products?.find(
+      (p: any) => p.barcode === trimmedCode || p.sku === trimmedCode
+    );
+
+    if (productFromVisibleList) {
+      handleBarcodeDetectedLocal(trimmedCode);
+      return;
+    }
+
+    try {
+      const product =
+        (await utils.products.getByBarcode.fetch(trimmedCode)) ||
+        (await utils.products.getBySku.fetch(trimmedCode));
+
+      if (product) {
+        addToCart(product);
+        return;
+      }
+
+      toast.error(`ط§ظ„ط±ظ‚ظ… ${trimmedCode} ط؛ظٹط± ظ…ط¹ط±ظ‘ظپ ظپظٹ ط§ظ„ظ†ط¸ط§ظ…`, {
+        className: "font-display",
+      });
+    } catch (error) {
+      console.error("Barcode lookup error:", error);
+      toast.error("طھط¹ط°ط± ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط§ظ„ظ…ظ†طھط¬. طھط­ظ‚ظ‚ ظ…ظ† ط§طھطµط§ظ„ ط§ظ„طھط·ط¨ظٹظ‚ ط¨ط§ظ„ط®ط§ط¯ظ….");
+    }
+  }, [handleBarcodeDetectedLocal, addToCart, products, utils.products.getByBarcode, utils.products.getBySku]);
 
   // Hardware Barcode Scanner Listener (Global)
   const barcodeBuffer = useRef("");
@@ -112,7 +165,7 @@ export default function POSPage() {
       
       if (e.key === 'Enter') {
         if (barcodeBuffer.current.length > 3) {
-          handleBarcodeDetected(barcodeBuffer.current);
+          void handleBarcodeDetected(barcodeBuffer.current);
           barcodeBuffer.current = "";
         }
         return;
@@ -174,7 +227,7 @@ export default function POSPage() {
     try {
       const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
       
-      const sale = await createSaleMutation.mutateAsync({
+      const sale = await checkoutMutation.mutateAsync({
         invoiceNumber,
         totalAmount: subtotal.toString(),
         taxAmount: taxAmount.toString(),
@@ -184,31 +237,19 @@ export default function POSPage() {
         customerName: customerName || "عميل عام",
         customerPhone,
         notes: "",
-      });
-
-      for (const item of cart) {
-        await addItemMutation.mutateAsync({
-          saleId: sale.insertId,
+        items: cart.map(item => ({
           productId: item.productId,
           quantity: item.quantity,
           unitPrice: item.price.toString(),
           subtotal: item.subtotal.toString(),
-        });
-
-        const product = products?.find((p: any) => p.id === item.productId);
-        if (product) {
-          await updateProductMutation.mutateAsync({
-            id: item.productId,
-            quantity: Math.max(0, product.quantity - item.quantity),
-          });
-        }
-      }
+        })),
+      });
 
       utils.products.list.invalidate();
 
       toast.success("تم إتمام دورة البيع بنجاح", { className: "font-display bg-primary text-primary-foreground border-primary" });
       setCompletedInvoice({
-        ...(sale as any) || {},
+        ...sale,
         invoiceNumber,
         cartItems: [...cart],
         total,
@@ -221,14 +262,22 @@ export default function POSPage() {
       setCustomerPhone("");
       setDiscount(0);
     } catch (error) {
-      toast.error("تعذر إتمام العملية");
+      toast.error("تعذر إتمام العملية، يرجى المحاولة مرة أخرى.");
+      console.error("Checkout Error:", error);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const handleTouchStart = (e: React.TouchEvent) => {
-    setTouchStartPos({ x: e.targetTouches[0].clientX, y: e.targetTouches[0].clientY });
+    const touch = e.targetTouches[0];
+
+    if (!shouldTrackEdgeSwipe(e.target, touch.clientX)) {
+      setTouchStartPos(null);
+      return;
+    }
+
+    setTouchStartPos({ x: touch.clientX, y: touch.clientY });
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -249,6 +298,22 @@ export default function POSPage() {
       }
     }
     setTouchStartPos(null);
+  };
+
+  const handleBluetoothPrint = async () => {
+    toast.loading("جاري الاتصال بالطابعة", { id: "bt-print" });
+
+    try {
+      await thermalPrinter.printRasterReceipt(completedInvoice);
+      toast.success("تم الإرسال للطابعة", { id: "bt-print" });
+    } catch (e: any) {
+      if (e?.code === "cancelled") {
+        toast.info(e.message || "تم إلغاء اختيار الطابعة", { id: "bt-print" });
+        return;
+      }
+
+      toast.error(e?.message || "تأكد من تفعيل طابعة البلوتوث", { id: "bt-print" });
+    }
   };
 
   return (
@@ -309,19 +374,21 @@ export default function POSPage() {
           </div>
 
           {/* Categories Tab (Minimal) */}
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none touch-pan-x" data-no-edge-swipe>
             <Button 
+              type="button"
               variant={selectedCategory === "all" ? "default" : "outline"}
-              className={`rounded-full px-6 font-display shadow-none ${selectedCategory !== "all" && "bg-background/40 border-border/30"}`}
+              className={`rounded-full px-6 font-display shadow-none touch-manipulation ${selectedCategory !== "all" && "bg-background/40 border-border/30"}`}
               onClick={() => setSelectedCategory("all")}
             >
               الكل
             </Button>
             {categories?.map((cat: any) => (
               <Button 
+                type="button"
                 key={cat.id}
                 variant={selectedCategory === cat.id.toString() ? "default" : "outline"}
-                className={`rounded-full px-6 font-display shadow-none whitespace-nowrap ${selectedCategory !== cat.id.toString() && "bg-background/40 border-border/30"}`}
+                className={`rounded-full px-6 font-display shadow-none whitespace-nowrap touch-manipulation ${selectedCategory !== cat.id.toString() && "bg-background/40 border-border/30"}`}
                 onClick={() => setSelectedCategory(cat.id.toString())}
               >
                 {cat.name}
@@ -510,8 +577,9 @@ export default function POSPage() {
               {/* Printable Area - Modern Monochrome */}
               <div className="bg-white text-black p-6 rounded-2xl shadow-inner print:shadow-none print:p-0 mx-auto max-w-[320px]">
                 <div className="text-center mb-6 border-b-2 border-dashed border-gray-200 pb-4">
-                  <h3 className="text-2xl font-black font-display tracking-tighter">نـبـض</h3>
-                  <p className="text-xs font-semibold text-gray-500 mt-1 uppercase tracking-widest">مبيعات التجزئة</p>
+                  <h3 className="text-2xl font-black font-display tracking-tight">{STORE_NAME}</h3>
+                  <p className="text-[11px] font-semibold text-gray-500 mt-2">الفروع</p>
+                  <p className="text-[11px] leading-5 text-gray-600 mt-1">{STORE_BRANCHES.join("، ")}</p>
                 </div>
                 
                 <div className="flex justify-between text-[10px] mb-4 text-gray-400 font-mono">
@@ -547,8 +615,17 @@ export default function POSPage() {
                     <span>{formatCurrency(completedInvoice.total)}</span>
                   </div>
                 </div>
+
+                <div className="mt-6 border-t border-dashed border-gray-300 pt-4 text-center">
+                  <p className="text-[11px] font-bold text-gray-700 mb-2">سياسة الإرجاع</p>
+                  <div className="space-y-1 text-[10px] leading-5 text-gray-600">
+                    {RETURN_POLICIES.map((policy) => (
+                      <p key={policy}>{policy}</p>
+                    ))}
+                  </div>
+                </div>
                 
-                <div className="mt-8 text-centeropacity-50 grayscale flex justify-center">
+                <div className="mt-8 opacity-50 grayscale flex justify-center">
                   <Barcode className="w-32 h-10" />
                 </div>
               </div>
@@ -557,15 +634,7 @@ export default function POSPage() {
               <div className="flex flex-col gap-3 no-print">
                 <Button 
                   className="w-full h-14 rounded-2xl gap-2 font-display text-lg" 
-                  onClick={async () => {
-                    try {
-                        toast.loading("جاري الاتصال بالطابعة", { id: "bt-print" });
-                        await thermalPrinter.printRasterReceipt(completedInvoice);
-                        toast.success("تم الإرسال للطابعة", { id: "bt-print" });
-                    } catch (e: any) {
-                        toast.error(e.message || "تأكد من تفعيل طابعة البلوتوث", { id: "bt-print" });
-                    }
-                  }}
+                  onClick={handleBluetoothPrint}
                 >
                   <Printer className="w-5 h-5" /> طباعة الإيصال
                 </Button>

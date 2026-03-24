@@ -39,15 +39,21 @@ queryClient.getMutationCache().subscribe(event => {
 
 import { Capacitor } from '@capacitor/core';
 
+const EMULATOR_API_URL = "http://10.0.2.2:3000";
+
 const getBaseUrl = () => {
-  let result = import.meta.env.VITE_API_URL || "";
-  
-  if (!result && typeof window !== "undefined") {
-    const isCapacitorOrigin = window.location.origin.includes("localhost") && !window.location.port;
-    if (isCapacitorOrigin || Capacitor.isNativePlatform()) {
-      result = "http://10.0.2.2:3000"; // Emulator Fallback
-    }
+  const configuredUrl = import.meta.env.VITE_API_URL?.trim() || "";
+
+  if (typeof window === "undefined") {
+    return configuredUrl;
   }
+
+  const isCapacitorOrigin =
+    window.location.origin.includes("localhost") && !window.location.port;
+  const isNativeRuntime = isCapacitorOrigin || Capacitor.isNativePlatform();
+
+  // Browser sessions already share the same Express origin as the API.
+  const result = isNativeRuntime ? configuredUrl || EMULATOR_API_URL : "";
 
   console.log(`[TRPC] Base: ${result || 'relative'} | Origin: ${window.location.origin}`);
   return result;

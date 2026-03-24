@@ -118,6 +118,31 @@ export const appRouter = router({
         notes: z.string().optional(),
       }))
       .mutation(({ ctx, input }) => db.createSale({ ...input, userId: ctx.user.id } as any)),
+    checkout: protectedProcedure
+      .input(z.object({
+        invoiceNumber: z.string(),
+        totalAmount: z.string(),
+        taxAmount: z.string().optional(),
+        discountAmount: z.string().optional(),
+        finalAmount: z.string(),
+        paymentMethod: z.string().optional(),
+        customerName: z.string().optional(),
+        customerPhone: z.string().optional(),
+        notes: z.string().optional(),
+        items: z.array(z.object({
+          productId: z.number(),
+          quantity: z.number(),
+          unitPrice: z.string(),
+          subtotal: z.string(),
+        })),
+      }))
+      .mutation(({ ctx, input }) => {
+        const { items, ...saleData } = input;
+        return db.checkoutTransaction(
+          { ...saleData, userId: ctx.user.id } as any,
+          items as any
+        );
+      }),
     items: publicProcedure.input(z.number()).query(({ input }) => db.getSaleItems(input)),
     addItem: protectedProcedure
       .input(z.object({

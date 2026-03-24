@@ -27,6 +27,19 @@
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', async () => {
           try {
+            if (import.meta.hot) {
+              const registrations = await navigator.serviceWorker.getRegistrations();
+              await Promise.all(registrations.map((registration) => registration.unregister()));
+
+              const cacheNames = await caches.keys();
+              await Promise.all(
+                cacheNames
+                  .filter((cacheName) => cacheName.startsWith('nabdh-pos-'))
+                  .map((cacheName) => caches.delete(cacheName))
+              );
+              return;
+            }
+
             await navigator.serviceWorker.register('/service-worker.js');
           } catch (err) {
             console.error('[SW] Registration failed:', err);
