@@ -1,49 +1,74 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
+import { Route, Switch, useLocation } from "wouter";
+import { AnimatePresence, motion } from "framer-motion";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
-import CategoriesPage from "./pages/CategoriesPage";
-import ProductsPage from "./pages/ProductsPage";
-import InventoryPage from "./pages/InventoryPage";
-import POSPage from "./pages/POSPage";
-import ReportsPage from "./pages/ReportsPage";
-import ExpensesPage from "./pages/ExpensesPage";
-import ProfilePage from "./pages/ProfilePage";
 
-function Router() {
+const Home = lazy(() => import("./pages/Home"));
+const POSPage = lazy(() => import("./pages/POSPage"));
+const ProductsPage = lazy(() => import("./pages/ProductsPage"));
+const CategoriesPage = lazy(() => import("./pages/CategoriesPage"));
+const InventoryPage = lazy(() => import("./pages/InventoryPage"));
+const ReportsPage = lazy(() => import("./pages/ReportsPage"));
+const ExpensesPage = lazy(() => import("./pages/ExpensesPage"));
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+
+const pageVariants = {
+  initial: { opacity: 0, y: 15, filter: "blur(4px)" },
+  animate: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
+  exit: { opacity: 0, y: -10, filter: "blur(2px)", transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] } }
+};
+
+function AnimatedRouter() {
+  const [location] = useLocation();
+
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/pos" component={POSPage} />
-      <Route path="/products" component={ProductsPage} />
-      <Route path="/categories" component={CategoriesPage} />
-      <Route path="/inventory" component={InventoryPage} />
-      <Route path="/reports" component={ReportsPage} />
-      <Route path="/expenses" component={ExpensesPage} />
-      <Route path="/profile" component={ProfilePage} />
-      <Route path="/404" component={NotFound} />
-      <Route component={NotFound} />
-    </Switch>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        variants={pageVariants}
+        className="h-full w-full min-h-[100dvh]"
+      >
+        <Suspense fallback={<RouteLoadingFallback />}>
+          <Switch location={location}>
+            <Route path="/" component={Home} />
+            <Route path="/pos" component={POSPage} />
+            <Route path="/products" component={ProductsPage} />
+            <Route path="/categories" component={CategoriesPage} />
+            <Route path="/inventory" component={InventoryPage} />
+            <Route path="/reports" component={ReportsPage} />
+            <Route path="/expenses" component={ExpensesPage} />
+            <Route path="/profile" component={ProfilePage} />
+            <Route path="/404" component={NotFound} />
+            <Route component={NotFound} />
+          </Switch>
+        </Suspense>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
+function RouteLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[100dvh] bg-background">
+      <div className="w-12 h-12 rounded-full border-t-2 border-r-2 border-primary animate-spin" />
+    </div>
+  );
+}
 
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-      >
-        <TooltipProvider>
-          <Toaster />
-          <Router />
+      <ThemeProvider defaultTheme="light">
+        <TooltipProvider delayDuration={300}>
+          <Toaster position="bottom-center" toastOptions={{ className: 'font-display tracking-wide border-border/50 backdrop-blur-md' }} />
+          <AnimatedRouter />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

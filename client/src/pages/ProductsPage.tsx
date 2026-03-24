@@ -1,22 +1,26 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Edit2, Trash2, Loader2, Search, Camera } from "lucide-react";
+import { Plus, Edit2, Trash2, Loader2, Search, Camera, Package, Barcode, ArrowRight, Tag, Zap, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import BarcodeScanner from "@/components/BarcodeScanner";
 import { formatCurrency } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from "wouter";
 
 export default function ProductsPage() {
+  const [, navigate] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  
   const [formData, setFormData] = useState({
     categoryId: 0,
     name: "",
@@ -33,45 +37,88 @@ export default function ProductsPage() {
   const { data: products, isLoading: productsLoading, refetch: refetchProducts } = trpc.products.list.useQuery(
     selectedCategory && selectedCategory !== "all" ? parseInt(selectedCategory) : undefined
   );
-  const { data: categories, isLoading: categoriesLoading } = trpc.categories.list.useQuery();
+  const { data: categories } = trpc.categories.list.useQuery();
   const createMutation = trpc.products.create.useMutation();
   const updateMutation = trpc.products.update.useMutation();
   const deleteMutation = trpc.products.delete.useMutation();
 
-  const filteredProducts = products?.filter((p: any) =>
-    p.name.includes(searchTerm) || p.sku.includes(searchTerm) || p.barcode?.includes(searchTerm)
-  ) || [];
+  const filteredProducts = useMemo(() => {
+    return products?.filter((p: any) =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      p.sku.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      p.barcode?.includes(searchTerm)
+    ) || [];
+  }, [products, searchTerm]);
+
+  // Hardware Scanner Support within dialog
+  const barcodeBuffer = useRef("");
+  const barcodeTimeout = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['TEXTAREA', 'INPUT'].includes((e.target as HTMLElement).tagName)) return;
+      
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.current.length > 3) {
+          setFormData(prev => ({ ...prev, barcode: barcodeBuffer.current }));
+          toast.success(`تم التقاط الباركود: ${barcodeBuffer.current}`);
+          barcodeBuffer.current = "";
+        }
+        return;
+      }
+
+      if (e.key.length === 1) {
+        barcodeBuffer.current += e.key;
+        if (barcodeTimeout.current) clearTimeout(barcodeTimeout.current);
+        barcodeTimeout.current = setTimeout(() => { barcodeBuffer.current = ""; }, 100);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (formData.categoryId === 0) {
+      toast.error("يرجى اختيار فئة للمنتج");
+      return;
+    }
+
     try {
       if (editingId) {
         await updateMutation.mutateAsync({ id: editingId, ...formData });
-        toast.success("تم تحديث المنتج بنجاح");
+        toast.success("تم تحديث بيانات المنتج");
       } else {
         await createMutation.mutateAsync(formData);
-        toast.success("تم إضافة المنتج بنجاح");
+        toast.success("تم إضافة المنتج للمخزون");
       }
       
-      setFormData({
-        categoryId: 0,
-        name: "",
-        description: "",
-        sku: "",
-        barcode: "",
-        price: "",
-        costPrice: "",
-        imageUrl: "",
-        quantity: 0,
-        minStockLevel: 10,
-      });
-      setEditingId(null);
+      resetForm();
       setIsOpen(false);
       refetchProducts();
-    } catch (error) {
-      toast.error("حدث خطأ ما");
+    } catch (error: any) {
+      toast.error(error.message || "فشلت العملية، تأكد من البيانات");
     }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      categoryId: 0,
+      name: "",
+      description: "",
+      sku: "",
+      barcode: "",
+      price: "",
+      costPrice: "",
+      imageUrl: "",
+      quantity: 0,
+      minStockLevel: 10,
+    });
+    setEditingId(null);
   };
 
   const handleEdit = (product: any) => {
@@ -91,243 +138,268 @@ export default function ProductsPage() {
     setIsOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
-    try {
-      await deleteMutation.mutateAsync(id);
-      toast.success("تم حذف المنتج بنجاح");
-      refetchProducts();
-    } catch (error) {
-      toast.error("حدث خطأ ما");
-    }
-  };
-
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">إدارة المنتجات</h1>
-          <p className="text-foreground/60 mt-1">إضافة وتعديل وحذف المنتجات</p>
-        </div>
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => { setFormData({ categoryId: 0, name: "", description: "", sku: "", barcode: "", price: "", costPrice: "", imageUrl: "", quantity: 0, minStockLevel: 10 }); setEditingId(null); }} className="gap-2">
-              <Plus className="w-4 h-4" />
-              منتج جديد
+    <div className="min-h-screen bg-background relative overflow-hidden pb-12">
+      {/* Background Ambience */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
+
+      <div className="container py-6 space-y-8 relative z-10">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 glass-panel p-6 rounded-[32px] border-white/5 shadow-2xl shadow-primary/5">
+          <div className="flex items-center gap-5">
+            <Button 
+                variant="outline" 
+                size="icon" 
+                className="rounded-2xl w-12 h-12 shadow-sm border-border/40 hover:bg-muted"
+                onClick={() => navigate("/")}
+            >
+                <ArrowRight className="w-5 h-5" />
             </Button>
-          </DialogTrigger>
-          <DialogContent className="max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingId ? "تعديل المنتج" : "إضافة منتج جديد"}</DialogTitle>
-              <DialogDescription>
-                {editingId ? "قم بتعديل تفاصيل المنتج" : "أضف منتج جديد إلى المتجر"}
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-foreground">الفئة</label>
-                <Select value={formData.categoryId.toString()} onValueChange={(value) => setFormData({ ...formData, categoryId: parseInt(value) })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر الفئة" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories?.map((cat: any) => (
-                      <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground">اسم المنتج</label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="مثال: جهاز كمبيوتر"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground">الوصف</label>
-                <Textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="وصف المنتج"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground">SKU</label>
-                  <Input
-                    value={formData.sku}
-                    onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                    placeholder="مثال: SKU001"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground">الباركود</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={formData.barcode}
-                      onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
-                      placeholder="مثال: 123456789"
-                    />
-                    <Button 
-                      type="button" 
-                      variant="outline" 
-                      onClick={() => setIsScannerOpen(true)}
-                    >
-                      <Camera className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground">السعر (د.ع)</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground">سعر التكلفة (د.ع)</label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.costPrice}
-                    onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium text-foreground">الكمية</label>
-                  <Input
-                    type="number"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })}
-                    placeholder="0"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-foreground">الحد الأدنى للمخزون</label>
-                  <Input
-                    type="number"
-                    value={formData.minStockLevel}
-                    onChange={(e) => setFormData({ ...formData, minStockLevel: parseInt(e.target.value) })}
-                    placeholder="10"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground">رابط الصورة</label>
-                <Input
-                  value={formData.imageUrl}
-                  onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
-                  placeholder="https://example.com/image.jpg"
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={createMutation.isPending || updateMutation.isPending}>
-                {createMutation.isPending || updateMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    جاري الحفظ...
-                  </>
-                ) : (
-                  editingId ? "تحديث" : "إضافة"
-                )}
+            <div>
+              <h1 className="text-3xl font-display font-black tracking-tight text-foreground flex items-center gap-3">
+                <Package className="w-8 h-8 text-primary" />
+                كتالوج المنتجات
+              </h1>
+              <p className="text-muted-foreground font-medium mt-1">إدارة المخزون، الأسعار، وبيانات التتبع</p>
+            </div>
+          </div>
+
+          <Dialog open={isOpen} onOpenChange={(v) => { setIsOpen(v); if (!v) resetForm(); }}>
+            <DialogTrigger asChild>
+              <Button className="h-14 px-8 rounded-2xl font-display font-bold text-lg shadow-xl shadow-primary/20 gap-3">
+                <Plus className="w-5 h-5" />
+                إضافة منتج 
               </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl p-0 border-0 glass-panel overflow-hidden rounded-[32px] shadow-2xl">
+              <div className="p-8 space-y-6">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-display font-bold">{editingId ? "تحديث المنتج" : "منتج جديد"}</DialogTitle>
+                  <DialogDescription className="font-medium">أدخل تفاصيل المنتج بدقة لضمان دقة التقارير المالية والباركود.</DialogDescription>
+                </DialogHeader>
 
-      {/* Search and Filter */}
-      <div className="flex gap-4">
-        <div className="flex-1 relative">
-          <Search className="absolute right-3 top-3 w-4 h-4 text-foreground/40" />
-          <Input
-            placeholder="ابحث بالاسم أو SKU أو الباركود..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-4 pr-10"
-          />
-        </div>
-        <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="جميع الفئات" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">جميع الفئات</SelectItem>
-            {categories?.map((cat: any) => (
-              <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {productsLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-accent" />
-        </div>
-      ) : filteredProducts.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border/50">
-                <th className="text-right py-3 px-4 font-semibold text-foreground">المنتج</th>
-                <th className="text-right py-3 px-4 font-semibold text-foreground">SKU</th>
-                <th className="text-right py-3 px-4 font-semibold text-foreground">السعر</th>
-                <th className="text-right py-3 px-4 font-semibold text-foreground">الكمية</th>
-                <th className="text-right py-3 px-4 font-semibold text-foreground">الإجراءات</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredProducts.map((product: any) => (
-                <tr key={product.id} className="border-b border-border/50 hover:bg-muted/50">
-                  <td className="py-3 px-4">{product.name}</td>
-                  <td className="py-3 px-4 text-foreground/60">{product.sku}</td>
-                  <td className="py-3 px-4">{formatCurrency(product.price)}</td>
-                  <td className="py-3 px-4">
-                    <span className={`px-2 py-1 rounded text-sm ${product.quantity < product.minStockLevel ? "bg-destructive/20 text-destructive" : "bg-accent/20 text-accent"}`}>
-                      {product.quantity}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEdit(product)}
+                <form onSubmit={handleSubmit} className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="space-y-2">
+                      <label className="text-xs font-display font-medium text-muted-foreground mr-1">اختر التصنيف</label>
+                      <select 
+                        className="w-full h-12 bg-background/50 border border-border/40 rounded-xl px-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+                        value={formData.categoryId} 
+                        onChange={(e) => setFormData({ ...formData, categoryId: parseInt(e.target.value) })}
                       >
-                        <Edit2 className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => handleDelete(product.id)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                        <option value="0" disabled>-- اختر الفئة --</option>
+                        {categories?.map((cat: any) => (
+                          <option key={cat.id} value={cat.id}>{cat.name}</option>
+                        ))}
+                      </select>
+                      {formData.categoryId === 0 && <p className="text-[10px] text-destructive font-bold flex items-center gap-1"><AlertCircle className="w-3 h-3" /> الفئة مطلوبة</p>}
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-display font-bold text-muted-foreground">اسم المنتج</label>
+                        <Input
+                          value={formData.name}
+                          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                          placeholder="مثال: آيفون 15 برو"
+                          className="h-12 bg-background/50 border-border/40 rounded-xl focus:border-primary"
+                          required
+                        />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-display font-bold text-muted-foreground">الوصف المختصر</label>
+                    <Textarea
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      placeholder="اكتب تفاصيل إضافية للمنتج..."
+                      className="bg-background/50 border-border/40 rounded-xl min-h-[80px]"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="space-y-2">
+                      <label className="text-sm font-display font-bold text-muted-foreground flex items-center gap-2">
+                        <Zap className="w-3 h-3" /> SKU / رمز التتبع
+                      </label>
+                      <Input
+                        value={formData.sku}
+                        onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                        placeholder="IPH-15-PR"
+                        className="h-12 bg-background/50 border-border/40 rounded-xl"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-display font-bold text-muted-foreground flex items-center gap-2">
+                        <Barcode className="w-3 h-3" /> الباركود الدولي
+                      </label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={formData.barcode}
+                          onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                          placeholder="648293..."
+                          className="h-12 bg-background/50 border-border/40 rounded-xl"
+                        />
+                        <Button 
+                          type="button" 
+                          variant="secondary" 
+                          className="h-12 w-12 rounded-xl p-0"
+                          onClick={() => setIsScannerOpen(true)}
+                        >
+                          <Camera className="w-5 h-5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div className="space-y-2">
+                      <label className="text-sm font-display font-bold text-muted-foreground">سعر البيع الافتراضي</label>
+                      <div className="relative">
+                        <Input
+                            type="number"
+                            step="0.01"
+                            value={formData.price}
+                            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                            placeholder="0.00"
+                            className="h-12 bg-background/50 border-border/40 rounded-xl pl-12"
+                            required
+                        />
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold opacity-30">د.ع</span>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-display font-bold text-muted-foreground">سعر التكلفة (تحليلي)</label>
+                      <div className="relative">
+                        <Input
+                            type="number"
+                            step="0.01"
+                            value={formData.costPrice}
+                            onChange={(e) => setFormData({ ...formData, costPrice: e.target.value })}
+                            placeholder="0.00"
+                            className="h-12 bg-background/50 border-border/40 rounded-xl pl-12"
+                        />
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold opacity-30">د.ع</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button type="submit" className="w-full h-14 rounded-2xl text-lg font-display font-bold shadow-xl shadow-primary/20" disabled={createMutation.isPending || updateMutation.isPending}>
+                    {createMutation.isPending || updateMutation.isPending ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      editingId ? "تحديث المنتج" : "تأكيد إضافة المنتج"
+                    )}
+                  </Button>
+                </form>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
-      ) : (
-        <Card className="border-border/50">
-          <CardContent className="py-12 text-center">
-            <p className="text-foreground/60">لا توجد منتجات حالياً. قم بإضافة منتج جديد للبدء.</p>
-          </CardContent>
-        </Card>
-      )}
+
+        {/* Filters Section */}
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1 relative group">
+            <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+            <Input
+              placeholder="ابحث بالاسم، SKU، أو امسح باركود المنتج مباشرة..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-4 pr-12 h-14 bg-background/40 glass-panel border-border/30 rounded-[20px] focus:border-primary/50"
+            />
+          </div>
+          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+            <SelectTrigger className="w-full md:w-64 h-14 bg-background/40 glass-panel border-border/30 rounded-[20px]">
+              <SelectValue placeholder="فلترة حسب الفئة" />
+            </SelectTrigger>
+            <SelectContent className="rounded-2xl">
+              <SelectItem value="all">جميع الفئات</SelectItem>
+              {categories?.map((cat: any) => (
+                <SelectItem key={cat.id} value={cat.id.toString()}>{cat.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Products Display */}
+        {productsLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 space-y-4">
+              <Loader2 className="w-12 h-12 animate-spin text-primary opacity-20" />
+              <p className="font-display font-bold text-muted-foreground tracking-widest text-xs uppercase">Loading Assets...</p>
+            </div>
+        ) : filteredProducts.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <AnimatePresence mode="popLayout">
+                {filteredProducts.map((product: any) => (
+                <motion.div
+                    layout
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    key={product.id}
+                >
+                    <Card className="group relative overflow-hidden h-full rounded-[32px] border-border/20 bg-background/40 glass-panel hover:border-primary/40 transition-all duration-300 shadow-sm hover:shadow-2xl hover:shadow-primary/5">
+                        <div className="p-6 space-y-4">
+                            <div className="flex justify-between items-start">
+                                <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                                    <Package className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                                </div>
+                                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={() => handleEdit(product)}>
+                                        <Edit2 className="w-4 h-4 text-primary" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg" onClick={async () => {
+                                        if (confirm("هل أنت متأكد من حذف هذا المنتج؟")) {
+                                            await deleteMutation.mutateAsync(product.id);
+                                            toast.success("تم الحذف");
+                                            refetchProducts();
+                                        }
+                                    }}>
+                                        <Trash2 className="w-4 h-4 text-destructive" />
+                                    </Button>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 className="font-display font-bold text-lg text-foreground truncate">{product.name}</h3>
+                                    <p className="text-xs font-mono text-muted-foreground truncate tracking-tighter uppercase">{product.sku}</p>
+                            </div>
+
+                            <div className="flex items-end justify-between pt-2">
+                                <div>
+                                    <p className="text-[10px] font-bold text-muted-foreground uppercase opacity-50 mb-0.5">Price Unit</p>
+                                    <p className="text-xl font-display font-black text-primary">{formatCurrency(product.price)}</p>
+                                </div>
+                                <div className={`px-4 py-1.5 rounded-full text-xs font-bold border ${
+                                    product.quantity <= product.minStockLevel 
+                                    ? "bg-destructive/10 text-destructive border-destructive/20" 
+                                    : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                }`}>
+                                    {product.quantity} رصيد
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Status Bar */}
+                        <div className={`h-1.5 w-full bg-muted overflow-hidden`}>
+                            <div 
+                                className={`h-full transition-all duration-1000 ${product.quantity <= product.minStockLevel ? 'bg-destructive' : 'bg-primary'}`} 
+                                style={{ width: `${Math.min(100, (product.quantity / (product.minStockLevel * 2)) * 100)}%` }}
+                            />
+                        </div>
+                    </Card>
+                </motion.div>
+                ))}
+            </AnimatePresence>
+          </div>
+        ) : (
+          <div className="h-96 flex flex-col items-center justify-center glass-panel rounded-[40px] border-dashed text-muted-foreground opacity-50 space-y-6">
+            <Package className="w-20 h-20 stroke-[1]" />
+            <p className="font-display text-xl">لا توجد منتجات تطابق معايير البحث</p>
+          </div>
+        )}
+      </div>
 
       <BarcodeScanner
         isOpen={isScannerOpen}

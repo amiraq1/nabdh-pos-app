@@ -1,15 +1,18 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { AlertCircle, Loader2, Search } from "lucide-react";
+import { AlertCircle, Loader2, Search, ArrowRight, Box, History, TrendingUp, TrendingDown, RefreshCcw, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from "wouter";
 
 export default function InventoryPage() {
+  const [, navigate] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -23,11 +26,16 @@ export default function InventoryPage() {
   const { data: stockHistory, isLoading: historyLoading, refetch: refetchHistory } = trpc.stock.history.useQuery(selectedProduct || 0);
   const addHistoryMutation = trpc.stock.addHistory.useMutation();
 
-  const filteredProducts = products?.filter((p: any) =>
-    p.name.includes(searchTerm) || p.sku.includes(searchTerm)
-  ) || [];
+  const filteredProducts = useMemo(() => {
+    return products?.filter((p: any) =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      p.sku.toLowerCase().includes(searchTerm.toLowerCase())
+    ) || [];
+  }, [products, searchTerm]);
 
-  const lowStockProducts = products?.filter((p: any) => p.quantity < p.minStockLevel) || [];
+  const lowStockProducts = useMemo(() => {
+    return products?.filter((p: any) => p.quantity < p.minStockLevel) || [];
+  }, [products]);
 
   const handleAdjustment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,220 +59,257 @@ export default function InventoryPage() {
       refetchProducts();
       refetchHistory();
     } catch (error) {
-      toast.error("حدث خطأ ما");
+      toast.error("فشل تحديث المخزون");
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">إدارة المخزون</h1>
-          <p className="text-foreground/60 mt-1">تتبع المخزون والتنبيهات</p>
-        </div>
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              تعديل المخزون
+    <div className="min-h-screen bg-background relative overflow-hidden pb-12">
+      {/* Background Ambience */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] pointer-events-none -translate-y-1/2 translate-x-1/2"></div>
+
+      <div className="container py-6 space-y-8 relative z-10">
+        {/* Header Section */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 glass-panel p-6 rounded-[32px] border-white/5 shadow-2xl shadow-primary/5">
+          <div className="flex items-center gap-5">
+            <Button 
+                variant="outline" 
+                size="icon" 
+                className="rounded-2xl w-12 h-12 shadow-sm border-border/40 hover:bg-muted"
+                onClick={() => navigate("/")}
+            >
+                <ArrowRight className="w-5 h-5" />
             </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>تعديل المخزون</DialogTitle>
-              <DialogDescription>
-                قم بتعديل كمية المنتج في المخزون
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleAdjustment} className="space-y-4">
-              <div>
-                <label className="text-sm font-medium text-foreground">المنتج</label>
-                <Select value={selectedProduct?.toString() || ""} onValueChange={(value) => setSelectedProduct(parseInt(value))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="اختر المنتج" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {products?.map((p: any) => (
-                      <SelectItem key={p.id} value={p.id.toString()}>
-                        {p.name} (الكمية الحالية: {p.quantity})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground">السبب</label>
-                <Select value={adjustmentData.reason} onValueChange={(value) => setAdjustmentData({ ...adjustmentData, reason: value })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="adjustment">تعديل</SelectItem>
-                    <SelectItem value="purchase">شراء</SelectItem>
-                    <SelectItem value="return">إرجاع</SelectItem>
-                    <SelectItem value="loss">فقدان</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground">التغيير في الكمية</label>
-                <Input
-                  type="number"
-                  value={adjustmentData.quantityChange}
-                  onChange={(e) => setAdjustmentData({ ...adjustmentData, quantityChange: parseInt(e.target.value) })}
-                  placeholder="مثال: 10 أو -5"
-                  required
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-foreground">ملاحظات</label>
-                <Textarea
-                  value={adjustmentData.notes}
-                  onChange={(e) => setAdjustmentData({ ...adjustmentData, notes: e.target.value })}
-                  placeholder="ملاحظات إضافية"
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={addHistoryMutation.isPending}>
-                {addHistoryMutation.isPending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                    جاري التحديث...
-                  </>
-                ) : (
-                  "تحديث"
-                )}
-              </Button>
-            </form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Low Stock Alert */}
-      {lowStockProducts.length > 0 && (
-        <Card className="border-destructive/50 bg-destructive/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <AlertCircle className="w-5 h-5" />
-              تنبيهات المخزون
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {lowStockProducts.map((product: any) => (
-                <div key={product.id} className="flex items-center justify-between p-3 bg-background rounded-lg border border-destructive/20">
-                  <div>
-                    <p className="font-medium text-foreground">{product.name}</p>
-                    <p className="text-sm text-foreground/60">الكمية الحالية: {product.quantity} (الحد الأدنى: {product.minStockLevel})</p>
-                  </div>
-                  <span className="px-3 py-1 bg-destructive/20 text-destructive rounded text-sm font-medium">
-                    منخفض
-                  </span>
-                </div>
-              ))}
+            <div>
+              <h1 className="text-3xl font-display font-black tracking-tight text-foreground flex items-center gap-3">
+                <Box className="w-8 h-8 text-primary" />
+                إدارة الجرد والمخزن
+              </h1>
+              <p className="text-muted-foreground font-medium mt-1">تتبع مستويات المخزون وحركات الإدخال والإخراج</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          </div>
 
-      {/* Search Products */}
-      <div className="relative">
-        <Search className="absolute right-3 top-3 w-4 h-4 text-foreground/40" />
-        <Input
-          placeholder="ابحث عن منتج..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-4 pr-10"
-        />
-      </div>
+          <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+              <Button className="h-14 px-8 rounded-2xl font-display font-bold text-lg shadow-xl shadow-primary/20 gap-3">
+                <RefreshCcw className="w-5 h-5" />
+                تعديل الرصيد
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-xl p-0 border-0 glass-panel overflow-hidden rounded-[32px] shadow-2xl">
+              <div className="p-8 space-y-6">
+                <DialogHeader>
+                  <DialogTitle className="text-2xl font-display font-bold">حركة مخزنية</DialogTitle>
+                  <DialogDescription className="font-medium">أضف أو اخصم من رصيد المنتج الحالي مع ذكر السبب.</DialogDescription>
+                </DialogHeader>
 
-      {/* Products List */}
-      {productsLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-accent" />
-        </div>
-      ) : filteredProducts.length > 0 ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredProducts.map((product: any) => (
-            <Card key={product.id} className="border-border/50 hover:shadow-lg transition-shadow">
-              <CardHeader>
-                <CardTitle className="text-lg">{product.name}</CardTitle>
-                <CardDescription>{product.sku}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-foreground/60">الكمية الحالية</p>
-                    <p className="text-2xl font-bold text-foreground">{product.quantity}</p>
+                <form onSubmit={handleAdjustment} className="space-y-6 text-right">
+                  <div className="space-y-2">
+                    <label className="text-sm font-display font-bold text-muted-foreground">المنتج المراد تعديله</label>
+                    <Select 
+                      value={selectedProduct?.toString() || ""} 
+                      onValueChange={(value) => setSelectedProduct(parseInt(value))}
+                    >
+                      <SelectTrigger className="h-12 bg-background/50 border-border/40 rounded-xl">
+                        <SelectValue placeholder="اختر المنتج من القائمة..." />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-xl">
+                        {products?.map((p: any) => (
+                          <SelectItem key={p.id} value={p.id.toString()}>
+                            {p.name} (الرصيد: {p.quantity})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <div>
-                    <p className="text-sm text-foreground/60">الحد الأدنى</p>
-                    <p className="text-2xl font-bold text-foreground">{product.minStockLevel}</p>
-                  </div>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${product.quantity < product.minStockLevel ? "bg-destructive" : "bg-accent"}`}
-                    style={{ width: `${Math.min((product.quantity / product.minStockLevel) * 100, 100)}%` }}
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    setSelectedProduct(product.id);
-                    setIsOpen(true);
-                  }}
-                >
-                  تعديل الكمية
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card className="border-border/50">
-          <CardContent className="py-12 text-center">
-            <p className="text-foreground/60">لا توجد منتجات حالياً.</p>
-          </CardContent>
-        </Card>
-      )}
 
-      {/* Stock History */}
-      {selectedProduct && (
-        <Card className="border-border/50">
-          <CardHeader>
-            <CardTitle>سجل حركة المخزون</CardTitle>
-            <CardDescription>آخر التعديلات على المخزون</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {historyLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="w-6 h-6 animate-spin text-accent" />
-              </div>
-            ) : stockHistory && stockHistory.length > 0 ? (
-              <div className="space-y-3">
-                {stockHistory.map((history: any) => (
-                  <div key={history.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                    <div>
-                      <p className="font-medium text-foreground">
-                        {history.reason === "sale" ? "بيع" : history.reason === "purchase" ? "شراء" : history.reason === "return" ? "إرجاع" : "تعديل"}
-                      </p>
-                      {history.notes && <p className="text-sm text-foreground/60">{history.notes}</p>}
+                  <div className="grid grid-cols-2 gap-5">
+                    <div className="space-y-2">
+                        <label className="text-sm font-display font-bold text-muted-foreground text-right block">نوع التصحيح</label>
+                        <Select 
+                            value={adjustmentData.reason} 
+                            onValueChange={(value) => setAdjustmentData({ ...adjustmentData, reason: value })}
+                        >
+                            <SelectTrigger className="h-12 bg-background/50 border-border/40 rounded-xl">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                                <SelectItem value="adjustment">تصحيح جرد</SelectItem>
+                                <SelectItem value="purchase">شراء معزز</SelectItem>
+                                <SelectItem value="return">مرتجع مبيعات</SelectItem>
+                                <SelectItem value="loss">تالف / مفقود</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
-                    <div className="text-right">
-                      <p className={`font-bold ${history.quantityChange > 0 ? "text-accent" : "text-destructive"}`}>
-                        {history.quantityChange > 0 ? "+" : ""}{history.quantityChange}
-                      </p>
-                      <p className="text-xs text-foreground/60">{new Date(history.createdAt).toLocaleDateString("ar-SA")}</p>
+                    <div className="space-y-2">
+                        <label className="text-sm font-display font-bold text-muted-foreground text-right block">الكمية (+ أو -)</label>
+                        <Input
+                            type="number"
+                            value={adjustmentData.quantityChange}
+                            onChange={(e) => setAdjustmentData({ ...adjustmentData, quantityChange: parseInt(e.target.value) })}
+                            placeholder="0"
+                            className="h-12 bg-background/50 border-border/40 rounded-xl text-center font-bold text-lg"
+                            required
+                        />
                     </div>
                   </div>
-                ))}
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-display font-bold text-muted-foreground text-right block">ملاحظات الحركة</label>
+                    <Textarea
+                      value={adjustmentData.notes}
+                      onChange={(e) => setAdjustmentData({ ...adjustmentData, notes: e.target.value })}
+                      placeholder="اذكر سبب التعديل هنا..."
+                      className="bg-background/50 border-border/40 rounded-xl min-h-[80px]"
+                    />
+                  </div>
+
+                  <Button type="submit" className="w-full h-14 rounded-2xl text-lg font-display font-bold shadow-xl shadow-primary/20" disabled={addHistoryMutation.isPending}>
+                    {addHistoryMutation.isPending ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      "تأكيد العملية"
+                    )}
+                  </Button>
+                </form>
               </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {/* Alerts Section */}
+        {lowStockProducts.length > 0 && (
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
+             <Card className="glass-panel border-rose-500/20 bg-rose-500/[0.03] rounded-[32px] overflow-hidden">
+                <div className="p-6 border-b border-rose-500/10 flex items-center justify-between">
+                    <div className="flex items-center gap-3 text-rose-500 font-display font-black">
+                        <AlertTriangle className="w-6 h-6 animate-pulse" />
+                        تنبيه: مخزون حرج ({lowStockProducts.length})
+                    </div>
+                </div>
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {lowStockProducts.map((p: any) => (
+                        <div key={p.id} className="flex items-center justify-between p-4 bg-background/60 rounded-2xl border border-rose-500/10 hover:border-rose-500/30 transition-colors">
+                            <div>
+                                <h4 className="font-display font-bold text-foreground text-sm">{p.name}</h4>
+                                <p className="text-[10px] font-bold opacity-50 uppercase">{p.sku}</p>
+                            </div>
+                            <div className="text-right">
+                                <span className="text-rose-500 font-display font-black text-lg">{p.quantity}</span>
+                                <p className="text-[10px] text-muted-foreground">الحد: {p.minStockLevel}</p>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+             </Card>
+          </motion.div>
+        )}
+
+        {/* Main List Section */}
+        <div className="space-y-6">
+            <div className="relative group">
+                <Search className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                <Input
+                    placeholder="ابحث عن منتج بالاسم أو SKU..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="h-14 bg-background/40 glass-panel border-border/30 rounded-[20px] pl-4 pr-12 text-lg focus:border-primary/40"
+                />
+            </div>
+
+            {productsLoading ? (
+                <div className="h-96 flex items-center justify-center">
+                    <Loader2 className="w-12 h-12 animate-spin text-primary opacity-20" />
+                </div>
             ) : (
-              <p className="text-foreground/60 text-center py-8">لا يوجد سجل حركة</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <AnimatePresence>
+                        {filteredProducts.map((p: any) => (
+                            <motion.div layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} key={p.id}>
+                                <Card className="glass-panel p-6 rounded-[32px] border-border/20 relative overflow-hidden group hover:border-primary/30 transition-all">
+                                    <div className="flex justify-between items-start mb-6">
+                                        <div className="w-14 h-14 rounded-2xl bg-muted/50 flex items-center justify-center">
+                                            <Box className="w-7 h-7 text-muted-foreground group-hover:text-primary transition-colors" />
+                                        </div>
+                                        <Button variant="ghost" className="rounded-xl h-10 px-4 font-display font-bold text-xs" onClick={() => { setSelectedProduct(p.id); setIsOpen(true); }}>
+                                            تعديل سريع
+                                        </Button>
+                                    </div>
+                                    <div className="mb-6">
+                                        <h3 className="text-xl font-display font-bold text-foreground truncate">{p.name}</h3>
+                                        <p className="text-xs font-mono opacity-40 uppercase tracking-tighter">{p.sku}</p>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4 mb-4">
+                                        <div className="p-4 rounded-2xl bg-background/40 border border-border/10">
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Stock</p>
+                                            <p className={`text-2xl font-display font-black ${p.quantity < p.minStockLevel ? 'text-rose-500' : 'text-primary'}`}>{p.quantity}</p>
+                                        </div>
+                                        <div className="p-4 rounded-2xl bg-background/40 border border-border/10">
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1">Limit</p>
+                                            <p className="text-2xl font-display font-black text-foreground/40">{p.minStockLevel}</p>
+                                        </div>
+                                    </div>
+                                    <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                        <div 
+                                            className={`h-full transition-all duration-1000 ${p.quantity < p.minStockLevel ? 'bg-rose-500' : 'bg-primary'}`} 
+                                            style={{ width: `${Math.min(100, (p.quantity / (p.minStockLevel || 1)) * 50)}%` }}
+                                        />
+                                    </div>
+                                </Card>
+                            </motion.div>
+                        ))}
+                    </AnimatePresence>
+                </div>
             )}
-          </CardContent>
-        </Card>
-      )}
+        </div>
+
+        {/* History Section */}
+        <AnimatePresence>
+            {selectedProduct && (
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                    <Card className="glass-panel rounded-[40px] border-border/20 overflow-hidden">
+                        <div className="p-8 border-b border-border/10 flex items-center justify-between">
+                            <h3 className="text-xl font-display font-bold text-foreground flex items-center gap-3">
+                                <History className="w-6 h-6 text-primary" /> سجل الحركة التاريخية للمنتج
+                            </h3>
+                            <Button variant="ghost" onClick={() => setSelectedProduct(null)} className="text-xs font-bold opacity-50">إغلاق السجل</Button>
+                        </div>
+                        <div className="p-8">
+                            {historyLoading ? (
+                                <Loader2 className="w-8 h-8 animate-spin mx-auto opacity-10" />
+                            ) : stockHistory && stockHistory.length > 0 ? (
+                                <div className="space-y-4">
+                                    {stockHistory.map((h: any) => (
+                                        <div key={h.id} className="flex items-center justify-between p-5 bg-background/40 rounded-[24px] border border-border/5 shadow-sm">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${h.quantityChange > 0 ? 'bg-emerald-500/10' : 'bg-rose-500/10'}`}>
+                                                    {h.quantityChange > 0 ? <TrendingUp className="w-5 h-5 text-emerald-500" /> : <TrendingDown className="w-5 h-5 text-rose-500" />}
+                                                </div>
+                                                <div>
+                                                    <p className="font-display font-bold text-foreground text-sm">
+                                                        {h.reason === "sale" ? "عملية بيع" : h.reason === "purchase" ? "تغذية مخزنية" : h.reason === "return" ? "مرتجع" : "تعديل يدوي"}
+                                                    </p>
+                                                    {h.notes && <p className="text-xs text-muted-foreground mt-0.5">{h.notes}</p>}
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className={`text-xl font-display font-black ${h.quantityChange > 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                                                    {h.quantityChange > 0 ? "+" : ""}{h.quantityChange}
+                                                </p>
+                                                <p className="text-[10px] font-bold opacity-30 mt-1">{new Date(h.createdAt).toLocaleString("ar-SA")}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="py-12 text-center opacity-30 italic">لا توجد حركات مسجلة لهذا المنتج</div>
+                            )}
+                        </div>
+                    </Card>
+                </motion.div>
+            )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

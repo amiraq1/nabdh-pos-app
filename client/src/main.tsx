@@ -37,10 +37,26 @@ queryClient.getMutationCache().subscribe(event => {
   }
 });
 
+import { Capacitor } from '@capacitor/core';
+
+const getBaseUrl = () => {
+  let result = import.meta.env.VITE_API_URL || "";
+  
+  if (!result && typeof window !== "undefined") {
+    const isCapacitorOrigin = window.location.origin.includes("localhost") && !window.location.port;
+    if (isCapacitorOrigin || Capacitor.isNativePlatform()) {
+      result = "http://10.0.2.2:3000"; // Emulator Fallback
+    }
+  }
+
+  console.log(`[TRPC] Base: ${result || 'relative'} | Origin: ${window.location.origin}`);
+  return result;
+};
+
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
-      url: "/api/trpc",
+      url: `${getBaseUrl()}/api/trpc`,
       transformer: superjson,
       fetch(input, init) {
         return globalThis.fetch(input, {
