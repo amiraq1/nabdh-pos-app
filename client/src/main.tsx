@@ -1,15 +1,31 @@
-import { trpc } from "@/lib/trpc";
-import { toast } from "sonner";
-import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
+import { toast } from "sonner";
 import superjson from "superjson";
+import { UNAUTHED_ERR_MSG } from "@shared/const";
+import {
+  API_REQUEST_TIMEOUT_MS,
+  formatApiErrorMessage,
+  getBaseUrl,
+} from "@/lib/api-config";
+import { trpc } from "@/lib/trpc";
 import App from "./App";
 import { getLoginUrl } from "./const";
 import "./index.css";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+      refetchOnReconnect: false,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: false,
+    },
+  },
+});
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
@@ -25,10 +41,16 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.query.state.error as Error;
+    const message = formatApiErrorMessage(error);
+
     redirectToLoginIfUnauthorized(error);
-    if (error?.message && !error.message.includes(UNAUTHED_ERR_MSG)) {
-      toast.error(`فشل جلب البيانات: ${error.message}`, { className: "font-display text-destructive border-destructive font-bold" });
+
+    if (message && !message.includes(UNAUTHED_ERR_MSG)) {
+      toast.error(message, {
+        className: "font-display text-destructive border-destructive font-bold",
+      });
     }
+
     console.error("[API Query Error]", error);
   }
 });
@@ -36,47 +58,72 @@ queryClient.getQueryCache().subscribe(event => {
 queryClient.getMutationCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
     const error = event.mutation.state.error as Error;
+    const message = formatApiErrorMessage(error);
+
     redirectToLoginIfUnauthorized(error);
-    if (error?.message && !error.message.includes(UNAUTHED_ERR_MSG)) {
-      toast.error(`فشلت العملية: ${error.message}`, { className: "font-display text-destructive border-destructive font-bold" });
+
+    if (message && !message.includes(UNAUTHED_ERR_MSG)) {
+      toast.error(message, {
+        className: "font-display text-destructive border-destructive font-bold",
+      });
     }
+
     console.error("[API Mutation Error]", error);
   }
 });
 
-import { Capacitor } from '@capacitor/core';
+const fetchWithApiTimeout: typeof globalThis.fetch = async (input, init) => {
+  const controller = new AbortController();
+  const upstreamSignal = init?.signal;
+  let timedOut = false;
 
-const EMULATOR_API_URL = "http://10.0.2.2:3000";
+  const handleUpstreamAbort = () => {
+    controller.abort(upstreamSignal?.reason);
+  };
 
-const getBaseUrl = () => {
-  const configuredUrl = import.meta.env.VITE_API_URL?.trim() || "";
-
-  if (typeof window === "undefined") {
-    return configuredUrl;
+  if (upstreamSignal) {
+    if (upstreamSignal.aborted) {
+      handleUpstreamAbort();
+    } else {
+      upstreamSignal.addEventListener("abort", handleUpstreamAbort, {
+        once: true,
+      });
+    }
   }
 
-  const isCapacitorOrigin =
-    window.location.origin.includes("localhost") && !window.location.port;
-  const isNativeRuntime = isCapacitorOrigin || Capacitor.isNativePlatform();
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, API_REQUEST_TIMEOUT_MS);
 
-  // Browser sessions already share the same Express origin as the API.
-  const result = isNativeRuntime ? configuredUrl || EMULATOR_API_URL : "";
+  try {
+    return await globalThis.fetch(input, {
+      ...(init ?? {}),
+      credentials: "include",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error("API_REQUEST_TIMEOUT");
+    }
 
-  console.log(`[TRPC] Base: ${result || 'relative'} | Origin: ${window.location.origin}`);
-  return result;
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+    upstreamSignal?.removeEventListener("abort", handleUpstreamAbort);
+  }
 };
+
+console.log(
+  `[TRPC] Base: ${getBaseUrl() || "relative"} | Origin: ${window.location.origin}`
+);
 
 const trpcClient = trpc.createClient({
   links: [
     httpBatchLink({
       url: `${getBaseUrl()}/api/trpc`,
       transformer: superjson,
-      fetch(input, init) {
-        return globalThis.fetch(input, {
-          ...(init ?? {}),
-          credentials: "include",
-        });
-      },
+      fetch: fetchWithApiTimeout,
     }),
   ],
 });

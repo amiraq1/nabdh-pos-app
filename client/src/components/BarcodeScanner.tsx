@@ -1,11 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
+import {
+  BarcodeFormat,
+  BarcodeScanner as NativeBarcodeScanner,
+  GoogleBarcodeScannerModuleInstallState,
+} from "@capacitor-mlkit/barcode-scanning";
 import { BrowserMultiFormatReader, Exception } from "@zxing/library";
 import { Button } from "@/components/ui/button";
 import { X, Camera, Volume2, VolumeX } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useAudioAlert } from "@/hooks/useAudioAlert";
-import { native } from "@/_core/native";
 
 interface BarcodeScannerProps {
   isOpen: boolean;
@@ -19,19 +29,7 @@ const waitForNextFrame = () =>
     requestAnimationFrame(() => resolve());
   });
 
-const waitForScannerSurface = async (isNativeRuntime: boolean) => {
-  await waitForNextFrame();
-
-  if (isNativeRuntime) {
-    await new Promise(resolve => {
-      setTimeout(resolve, 160);
-    });
-  }
-
-  await waitForNextFrame();
-};
-
-const CAMERA_STARTUP_ATTEMPTS: MediaStreamConstraints[] = [
+const WEB_CAMERA_ATTEMPTS: MediaStreamConstraints[] = [
   {
     video: {
       facingMode: { ideal: "environment" },
@@ -49,30 +47,83 @@ const CAMERA_STARTUP_ATTEMPTS: MediaStreamConstraints[] = [
   },
 ];
 
-const getCameraErrorMessage = (error: unknown) => {
+const NATIVE_SCAN_FORMATS = [
+  BarcodeFormat.Code128,
+  BarcodeFormat.Code39,
+  BarcodeFormat.Code93,
+  BarcodeFormat.Codabar,
+  BarcodeFormat.Ean8,
+  BarcodeFormat.Ean13,
+  BarcodeFormat.Itf,
+  BarcodeFormat.UpcA,
+  BarcodeFormat.UpcE,
+  BarcodeFormat.QrCode,
+  BarcodeFormat.DataMatrix,
+  BarcodeFormat.Pdf417,
+  BarcodeFormat.Aztec,
+];
+
+const NATIVE_PLATFORM = Capacitor.getPlatform();
+const USES_NATIVE_SCANNER =
+  Capacitor.isNativePlatform() &&
+  (NATIVE_PLATFORM === "android" || NATIVE_PLATFORM === "ios");
+
+const isGrantedPermission = (state?: string) =>
+  state === "granted" || state === "limited";
+
+const decodeNativeBarcodeValue = (barcode: {
+  rawValue?: string;
+  displayValue?: string;
+  bytes?: number[];
+}) => {
+  const preferredValue = barcode.rawValue?.trim() || barcode.displayValue?.trim();
+
+  if (preferredValue) {
+    return preferredValue;
+  }
+
+  if (barcode.bytes?.length) {
+    try {
+      return new TextDecoder("utf-8").decode(new Uint8Array(barcode.bytes)).trim();
+    } catch (error) {
+      console.warn("Failed to decode barcode bytes:", error);
+    }
+  }
+
+  return "";
+};
+
+const getScanErrorMessage = (error: unknown) => {
   if (error instanceof DOMException) {
-    if (error.name === "NotAllowedError") {
-      return "تم رفض إذن استخدام الكاميرا";
-    }
-
-    if (error.name === "NotFoundError") {
-      return "لم يتم العثور على كاميرا متاحة";
-    }
-
-    if (error.name === "NotReadableError") {
-      return "الكاميرا مستخدمة من تطبيق آخر أو غير متاحة حالياً";
-    }
-
-    if (error.name === "OverconstrainedError") {
-      return "تعذر تشغيل الكاميرا بالإعدادات الحالية";
+    switch (error.name) {
+      case "NotAllowedError":
+        return "تم رفض إذن استخدام الكاميرا";
+      case "NotFoundError":
+        return "لم يتم العثور على كاميرا متاحة";
+      case "NotReadableError":
+        return "الكاميرا مستخدمة من تطبيق آخر أو غير متاحة حاليًا";
+      case "OverconstrainedError":
+        return "تعذر تشغيل الكاميرا بالإعدادات الحالية";
+      default:
+        break;
     }
   }
 
   if (error instanceof Error) {
-    return error.message;
+    const message = error.message.trim();
+
+    if (!message) {
+      return "فشل تشغيل الماسح";
+    }
+
+    if (/cancel/i.test(message)) {
+      return "";
+    }
+
+    return message;
   }
 
-  return "فشل الوصول إلى الكاميرا";
+  return "فشل تشغيل الماسح";
 };
 
 export default function BarcodeScanner({
@@ -82,16 +133,19 @@ export default function BarcodeScanner({
   soundEnabled = true,
 }: BarcodeScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [error, setError] = useState("");
-  const [isSoundEnabled, setIsSoundEnabled] = useState(soundEnabled);
-  const scanningRef = useRef(false);
-  const startingRef = useRef(false);
-  const scanSessionRef = useRef(0);
-  const codeReaderRef = useRef(new BrowserMultiFormatReader());
+  const webReaderRef = useRef(new BrowserMultiFormatReader());
   const onCloseRef = useRef(onClose);
   const onBarcodeDetectedRef = useRef(onBarcodeDetected);
-  const isSoundEnabledRef = useRef(soundEnabled);
+  const nativeScanInFlightRef = useRef(false);
+  const nativeSessionRef = useRef(0);
+
+  const [isScanning, setIsScanning] = useState(false);
+  const [error, setError] = useState("");
+  const [statusMessage, setStatusMessage] = useState(
+    USES_NATIVE_SCANNER ? "تجهيز الماسح الأصلي..." : ""
+  );
+  const [isSoundEnabled, setIsSoundEnabled] = useState(soundEnabled);
+
   const { playScanBeep, playSuccessBeep, playErrorBeep } = useAudioAlert();
 
   useEffect(() => {
@@ -103,98 +157,255 @@ export default function BarcodeScanner({
   }, [onBarcodeDetected]);
 
   useEffect(() => {
-    isSoundEnabledRef.current = isSoundEnabled;
-  }, [isSoundEnabled]);
+    setIsSoundEnabled(soundEnabled);
+  }, [soundEnabled]);
 
-  const resetVideoSurface = useCallback(() => {
-    if (!videoRef.current) {
-      return;
+  const stopWebScanning = useCallback(() => {
+    webReaderRef.current.reset();
+
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.srcObject = null;
     }
 
-    videoRef.current.pause();
-    videoRef.current.srcObject = null;
+    setIsScanning(false);
   }, []);
 
-  const stopScanning = useCallback(() => {
-    scanSessionRef.current += 1;
-    scanningRef.current = false;
-    startingRef.current = false;
-    codeReaderRef.current.reset();
-    resetVideoSurface();
-    setIsScanning(false);
-  }, [resetVideoSurface]);
+  const closeScanner = useCallback(() => {
+    stopWebScanning();
+    onCloseRef.current();
+  }, [stopWebScanning]);
 
-  const startScanning = useCallback(async () => {
-    if (startingRef.current || scanningRef.current) {
+  const ensureAndroidGoogleScanner = useCallback(async () => {
+    if (NATIVE_PLATFORM !== "android") {
       return;
     }
 
+    const { available } =
+      await NativeBarcodeScanner.isGoogleBarcodeScannerModuleAvailable();
+
+    if (available) {
+      return;
+    }
+
+    setStatusMessage("جارٍ تنزيل ماسح Google لأول مرة...");
+
+    await new Promise<void>(async (resolve, reject) => {
+      let settled = false;
+      let progressListener: PluginListenerHandle | null = null;
+
+      const settle = (callback: () => void) => {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+        clearTimeout(timeoutId);
+        void progressListener?.remove();
+        callback();
+      };
+
+      const timeoutId = window.setTimeout(() => {
+        settle(() => {
+          reject(new Error("استغرق تجهيز ماسح Google وقتًا أطول من المتوقع"));
+        });
+      }, 60_000);
+
+      progressListener = await NativeBarcodeScanner.addListener(
+        "googleBarcodeScannerModuleInstallProgress",
+        event => {
+          switch (event.state) {
+            case GoogleBarcodeScannerModuleInstallState.DOWNLOADING:
+            case GoogleBarcodeScannerModuleInstallState.INSTALLING:
+              setStatusMessage(
+                typeof event.progress === "number"
+                  ? `جارٍ تجهيز ماسح Google (${event.progress}%)`
+                  : "جارٍ تجهيز ماسح Google..."
+              );
+              break;
+            case GoogleBarcodeScannerModuleInstallState.COMPLETED:
+              settle(resolve);
+              break;
+            case GoogleBarcodeScannerModuleInstallState.CANCELED:
+              settle(() => {
+                reject(new Error("تم إلغاء تنزيل ماسح Google"));
+              });
+              break;
+            case GoogleBarcodeScannerModuleInstallState.FAILED:
+              settle(() => {
+                reject(new Error("فشل تنزيل ماسح Google"));
+              });
+              break;
+            default:
+              break;
+          }
+        }
+      );
+
+      try {
+        await NativeBarcodeScanner.installGoogleBarcodeScannerModule();
+      } catch (installError) {
+        settle(() => {
+          reject(installError);
+        });
+      }
+    });
+  }, []);
+
+  const runNativeScan = useCallback(async () => {
+    if (!USES_NATIVE_SCANNER || nativeScanInFlightRef.current) {
+      return;
+    }
+
+    nativeScanInFlightRef.current = true;
+    const sessionId = nativeSessionRef.current + 1;
+    nativeSessionRef.current = sessionId;
+
+    try {
+      setError("");
+      setIsScanning(true);
+      setStatusMessage("تجهيز الماسح الأصلي...");
+
+      const { supported } = await NativeBarcodeScanner.isSupported();
+      if (!supported) {
+        throw new Error("هذا الجهاز لا يدعم مسح الباركود بالكاميرا");
+      }
+
+      if (NATIVE_PLATFORM === "android") {
+        await ensureAndroidGoogleScanner();
+      } else {
+        const permissionStatus = await NativeBarcodeScanner.requestPermissions();
+        if (!isGrantedPermission(permissionStatus.camera)) {
+          throw new Error("تم رفض إذن استخدام الكاميرا");
+        }
+      }
+
+      if (sessionId !== nativeSessionRef.current || !isOpen) {
+        return;
+      }
+
+      setStatusMessage("فتح الماسح الأصلي...");
+
+      const { barcodes } = await NativeBarcodeScanner.scan({
+        formats: NATIVE_SCAN_FORMATS,
+        autoZoom: true,
+      });
+
+      if (sessionId !== nativeSessionRef.current || !isOpen) {
+        return;
+      }
+
+      const scannedValue = barcodes.map(decodeNativeBarcodeValue).find(Boolean);
+
+      if (!scannedValue) {
+        onCloseRef.current();
+        return;
+      }
+
+      if (isSoundEnabled) {
+        playSuccessBeep();
+      }
+
+      navigator.vibrate?.(200);
+
+      await onBarcodeDetectedRef.current(scannedValue);
+      toast.success(`تمت قراءة الكود: ${scannedValue}`);
+      onCloseRef.current();
+    } catch (scanError) {
+      if (sessionId !== nativeSessionRef.current) {
+        return;
+      }
+
+      const message = getScanErrorMessage(scanError);
+
+      if (!message) {
+        onCloseRef.current();
+        return;
+      }
+
+      setError(message);
+      setStatusMessage("");
+
+      if (isSoundEnabled) {
+        playErrorBeep();
+      }
+
+      toast.error(message, {
+        className: "font-display text-destructive border-destructive",
+      });
+    } finally {
+      if (sessionId === nativeSessionRef.current) {
+        setIsScanning(false);
+      }
+
+      nativeScanInFlightRef.current = false;
+    }
+  }, [
+    ensureAndroidGoogleScanner,
+    isOpen,
+    isSoundEnabled,
+    playErrorBeep,
+    playSuccessBeep,
+  ]);
+
+  const startWebScan = useCallback(async () => {
     const videoElement = videoRef.current;
     if (!videoElement) {
       return;
     }
 
-    const sessionId = scanSessionRef.current + 1;
-    scanSessionRef.current = sessionId;
+    const sessionId = nativeSessionRef.current + 1;
+    nativeSessionRef.current = sessionId;
 
-    const handleDecode = (result: any, err: unknown) => {
-      if (sessionId !== scanSessionRef.current || !scanningRef.current) {
+    const handleDecode = async (result: any, scanError: unknown) => {
+      if (sessionId !== nativeSessionRef.current) {
         return;
       }
 
       if (result) {
         const barcode = result.getText();
-
-        if (barcode) {
-          scanningRef.current = false;
-
-          if (isSoundEnabledRef.current) {
-            playSuccessBeep();
-          }
-
-          if (navigator.vibrate) {
-            navigator.vibrate(200);
-          }
-
-          onBarcodeDetectedRef.current(barcode);
-          toast.success(`تم قراءة الكود: ${barcode}`);
-          stopScanning();
-          onCloseRef.current();
+        if (!barcode) {
           return;
         }
+
+        if (isSoundEnabled) {
+          playSuccessBeep();
+        }
+
+        navigator.vibrate?.(200);
+
+        stopWebScanning();
+        await onBarcodeDetectedRef.current(barcode);
+        toast.success(`تمت قراءة الكود: ${barcode}`);
+        onCloseRef.current();
+        return;
       }
 
-      if (err && !(err instanceof Exception)) {
-        console.error("Barcode scan error:", err);
+      if (scanError && !(scanError instanceof Exception)) {
+        console.error("Barcode scan error:", scanError);
       }
     };
 
     try {
       setError("");
+      setStatusMessage("");
+      setIsScanning(true);
 
-      if (isSoundEnabledRef.current) {
+      if (isSoundEnabled) {
         playScanBeep();
       }
 
-      startingRef.current = true;
-      scanningRef.current = true;
-      setIsScanning(true);
-
-      await waitForScannerSurface(native.isNative);
-
-      if (sessionId !== scanSessionRef.current || !videoRef.current) {
-        return;
-      }
+      await waitForNextFrame();
 
       let lastError: unknown = new Error("Failed to initialize camera");
 
-      for (const constraints of CAMERA_STARTUP_ATTEMPTS) {
-        if (sessionId !== scanSessionRef.current || !videoRef.current) {
+      for (const constraints of WEB_CAMERA_ATTEMPTS) {
+        if (sessionId !== nativeSessionRef.current) {
           return;
         }
 
         try {
-          await codeReaderRef.current.decodeFromConstraints(
+          await webReaderRef.current.decodeFromConstraints(
             constraints,
             videoElement,
             handleDecode
@@ -202,54 +413,67 @@ export default function BarcodeScanner({
           return;
         } catch (attemptError) {
           lastError = attemptError;
-          codeReaderRef.current.reset();
-          resetVideoSurface();
-          console.warn("Camera startup attempt failed:", attemptError);
+          webReaderRef.current.reset();
+
+          if (videoRef.current) {
+            videoRef.current.srcObject = null;
+          }
         }
       }
 
       throw lastError;
-    } catch (err) {
-      if (sessionId !== scanSessionRef.current) {
+    } catch (scanError) {
+      if (sessionId !== nativeSessionRef.current) {
         return;
       }
 
-      const message = getCameraErrorMessage(err);
+      const message = getScanErrorMessage(scanError);
       setError(message);
-      stopScanning();
+      setIsScanning(false);
 
-      if (isSoundEnabledRef.current) {
+      if (isSoundEnabled) {
         playErrorBeep();
       }
 
-      toast.error(message);
-    } finally {
-      if (sessionId === scanSessionRef.current) {
-        startingRef.current = false;
-      }
+      toast.error(message, {
+        className: "font-display text-destructive border-destructive",
+      });
     }
-  }, [playErrorBeep, playScanBeep, playSuccessBeep, resetVideoSurface, stopScanning]);
+  }, [isSoundEnabled, playErrorBeep, playScanBeep, playSuccessBeep, stopWebScanning]);
 
   useEffect(() => {
     if (!isOpen) {
-      stopScanning();
+      nativeSessionRef.current += 1;
+      nativeScanInFlightRef.current = false;
+      setError("");
+      setStatusMessage(USES_NATIVE_SCANNER ? "تجهيز الماسح الأصلي..." : "");
+      stopWebScanning();
       return;
     }
 
-    void startScanning();
+    if (USES_NATIVE_SCANNER) {
+      void runNativeScan();
+      return;
+    }
+
+    void startWebScan();
 
     return () => {
-      stopScanning();
+      stopWebScanning();
     };
-  }, [isOpen, startScanning, stopScanning]);
+  }, [isOpen, runNativeScan, startWebScan, stopWebScanning]);
+
+  const title = useMemo(
+    () => (USES_NATIVE_SCANNER ? "الماسح الأصلي" : "مسح الباركود"),
+    []
+  );
 
   return (
     <Dialog
       open={isOpen}
       onOpenChange={open => {
         if (!open) {
-          stopScanning();
-          onCloseRef.current();
+          closeScanner();
         }
       }}
     >
@@ -258,7 +482,7 @@ export default function BarcodeScanner({
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
               <Camera className="w-5 h-5" />
-              مسح الباركود
+              {title}
             </DialogTitle>
             <Button
               variant="ghost"
@@ -283,52 +507,75 @@ export default function BarcodeScanner({
 
         <div className="space-y-4">
           {error ? (
-            <div className="bg-destructive/20 border border-destructive/50 rounded-lg p-4 text-center">
-              <p className="text-destructive text-sm">{error}</p>
+            <div className="rounded-lg border border-destructive/50 bg-destructive/20 p-4 text-center">
+              <p className="text-sm text-destructive">{error}</p>
               <Button
-                onClick={() => void startScanning()}
+                onClick={() =>
+                  USES_NATIVE_SCANNER ? void runNativeScan() : void startWebScan()
+                }
                 className="mt-3 w-full"
                 variant="outline"
               >
-                حاول مجدداً
+                حاول مجددًا
+              </Button>
+            </div>
+          ) : USES_NATIVE_SCANNER ? (
+            <div className="space-y-4">
+              <div className="rounded-[28px] border border-border/50 bg-gradient-to-br from-background via-muted/40 to-background p-6 text-center shadow-sm">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <Camera className="h-8 w-8" />
+                </div>
+                <p className="font-display text-base font-semibold text-foreground">
+                  {isScanning ? "جاري فتح الماسح الأصلي" : "الماسح جاهز"}
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {statusMessage || "سيتم فتح واجهة المسح الأصلية على الجهاز"}
+                </p>
+              </div>
+
+              <Button
+                onClick={closeScanner}
+                variant="outline"
+                className="w-full gap-2"
+              >
+                <X className="w-4 h-4" />
+                إغلاق
               </Button>
             </div>
           ) : (
             <>
-              <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
+              <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
                 <video
                   ref={videoRef}
-                  className="w-full h-full object-cover"
+                  className="h-full w-full object-cover"
+                  autoPlay
                   muted
                   playsInline
                 />
 
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-64 h-64 border-2 border-accent rounded-lg animate-pulse" />
+                  <div className="h-64 w-64 animate-pulse rounded-lg border-2 border-accent" />
                 </div>
 
-                <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-accent" />
-                <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-accent" />
-                <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-accent" />
-                <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-accent" />
+                <div className="absolute left-4 top-4 h-8 w-8 border-l-2 border-t-2 border-accent" />
+                <div className="absolute right-4 top-4 h-8 w-8 border-r-2 border-t-2 border-accent" />
+                <div className="absolute bottom-4 left-4 h-8 w-8 border-b-2 border-l-2 border-accent" />
+                <div className="absolute bottom-4 right-4 h-8 w-8 border-b-2 border-r-2 border-accent" />
               </div>
 
               <div className="text-center text-sm text-foreground/60">
                 <p>وجه الكاميرا نحو الباركود</p>
-                <p className="text-xs mt-1">سيتم الكشف عن الباركود تلقائياً</p>
+                <p className="mt-1 text-xs">سيتم الكشف عن الباركود تلقائيًا</p>
                 {isScanning && (
-                  <p className="text-xs mt-2 text-accent">الكاميرا تعمل الآن</p>
+                  <p className="mt-2 text-xs text-accent">الكاميرا تعمل الآن</p>
                 )}
                 {isSoundEnabled && (
-                  <p className="text-xs mt-2 text-accent">التنبيهات الصوتية مفعلة</p>
+                  <p className="mt-2 text-xs text-accent">التنبيهات الصوتية مفعلة</p>
                 )}
               </div>
 
               <Button
-                onClick={() => {
-                  stopScanning();
-                  onCloseRef.current();
-                }}
+                onClick={closeScanner}
                 variant="outline"
                 className="w-full gap-2"
               >

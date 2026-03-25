@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Loader2, UserCircle } from "lucide-react";
 import { native } from "@/_core/native";
 import { motion } from "framer-motion";
+import { hasPermission, type AppPermission } from "@shared/permissions";
 
 export default function Home() {
   const { user, loading, isAuthenticated, refresh } = useAuth();
@@ -135,7 +136,14 @@ export default function Home() {
 
   // ============== لوحة التحكم الرئيسية (Home Dashboard - Avant-Garde) ==============
   
-  const dashboardItems = [
+  const dashboardItems: Array<{
+    title: string;
+    desc: string;
+    icon: typeof ShoppingCart;
+    link: string;
+    color: string;
+    iconColor: string;
+  }> = [
     { title: "نقطة البيع", desc: "فتح محطة الكاشير فوراً", icon: ShoppingCart, link: "/pos", color: "from-blue-500/20 to-indigo-500/20", iconColor: "text-blue-500" },
     { title: "المنتجات", desc: "إضافة وتعديل الأرصدة", icon: Package, link: "/products", color: "from-emerald-500/20 to-green-500/20", iconColor: "text-emerald-500" },
     { title: "الفئات", desc: "أقسام المتجر", icon: Layers, link: "/categories", color: "from-orange-500/20 to-amber-500/20", iconColor: "text-orange-500" },
@@ -143,6 +151,17 @@ export default function Home() {
     { title: "التقارير", desc: "الأرباح والمبيعات", icon: BarChart3, link: "/reports", color: "from-purple-500/20 to-fuchsia-500/20", iconColor: "text-purple-500" },
     { title: "المصاريف", desc: "سجل المدفوعات اليومية", icon: Receipt, link: "/expenses", color: "from-cyan-500/20 to-sky-500/20", iconColor: "text-cyan-500" },
   ];
+  const dashboardPermissions: AppPermission[] = [
+    "pos.use",
+    "products.view",
+    "categories.view",
+    "inventory.view",
+    "reports.view",
+    "expenses.view",
+  ];
+  const visibleDashboardItems = dashboardItems.filter((_, index) =>
+    hasPermission((user as any)?.role, dashboardPermissions[index])
+  );
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden pb-20">
@@ -243,7 +262,7 @@ export default function Home() {
         </h3>
         
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {dashboardItems.map((item, idx) => (
+          {visibleDashboardItems.map((item, idx) => (
             <motion.button
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}

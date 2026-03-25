@@ -2,6 +2,7 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, users, categories, products, stockHistory, sales, saleItems, Category, InsertCategory, Product, InsertProduct, InsertStockHistory, Sale, InsertSale, SaleItem, InsertSaleItem, User, expenses, InsertExpense } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { randomUUID } from "crypto";
 import fs from "fs";
 import path from "path";
 
@@ -9,6 +10,7 @@ let _db: ReturnType<typeof drizzle> | null = null;
 
 // ============ JSON Mock DB Logistics ============
 const MOCK_DB_PATH = path.resolve(process.cwd(), "mock_db.json");
+const PRODUCT_TRACKING_PREFIX = "PRD-";
 
 function loadMockDb() {
   if (fs.existsSync(MOCK_DB_PATH)) {
@@ -37,6 +39,59 @@ function loadMockDb() {
 
 function saveMockDb(data: any) {
   fs.writeFileSync(MOCK_DB_PATH, JSON.stringify(data, null, 2));
+}
+
+function formatProductTrackingCode(sequence: number) {
+  return `${PRODUCT_TRACKING_PREFIX}${String(sequence).padStart(5, "0")}`;
+}
+
+function normalizeNonNegativeInteger(value: unknown, fallback = 0) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function sanitizeOptionalText(value: unknown) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized ? normalized : undefined;
+}
+
+function sanitizeRequiredText(value: unknown) {
+  return typeof value === "string" ? value.trim() : String(value ?? "").trim();
+}
+
+function sanitizeOptionalNumberText(value: unknown) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized ? normalized : undefined;
+}
+
+function sanitizeProductInput(input: InsertProduct): InsertProduct;
+function sanitizeProductInput(input: Partial<InsertProduct>): Partial<InsertProduct>;
+function sanitizeProductInput(input: Partial<InsertProduct>) {
+  const sanitized = {
+    ...input,
+    name: input.name === undefined ? input.name : sanitizeRequiredText(input.name),
+    description: sanitizeOptionalText(input.description),
+    sku: input.sku ? input.sku.trim().toUpperCase() : input.sku,
+    barcode: sanitizeOptionalText(input.barcode),
+    price: input.price === undefined ? input.price : sanitizeRequiredText(input.price),
+    costPrice: sanitizeOptionalNumberText(input.costPrice),
+    imageUrl: sanitizeOptionalText(input.imageUrl),
+    quantity:
+      input.quantity === undefined
+        ? input.quantity
+        : normalizeNonNegativeInteger(input.quantity, 0),
+    minStockLevel:
+      input.minStockLevel === undefined
+        ? input.minStockLevel
+        : normalizeNonNegativeInteger(input.minStockLevel, 10),
+  };
+
+  return sanitized as InsertProduct | Partial<InsertProduct>;
 }
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
@@ -104,6 +159,254 @@ export async function getUserByPin(pin: string): Promise<User | undefined> {
     const data = loadMockDb();
     return data.users.find((u: any) => u.pin === pin);
   }
+}
+
+export async function getUserById(id: number): Promise<User | undefined> {
+  const db = await getDb();
+  if (db) {
+    const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    return result[0];
+  }
+
+  const data = loadMockDb();
+  return data.users.find((user: any) => user.id === id);
+}
+
+function sanitizePin(pin: string) {
+  return pin.replace(/\D+/g, "").slice(0, 4);
+}
+
+async function assertPinAvailable(pin: string, excludeUserId?: number) {
+  const normalizedPin = sanitizePin(pin);
+
+  if (normalizedPin.length !== 4) {
+    throw new Error("رمز الدخول يجب أن يتكون من 4 أرقام");
+  }
+
+  const db = await getDb();
+
+  if (db) {
+    const matches = await db.select().from(users).where(eq(users.pin, normalizedPin));
+    const conflict = matches.find(user => user.id !== excludeUserId);
+
+    if (conflict) {
+      throw new Error("رمز الدخول مستخدم من حساب آخر");
+    }
+  } else {
+    const data = loadMockDb();
+    const conflict = data.users.find(
+      (user: any) => user.pin === normalizedPin && user.id !== excludeUserId
+    );
+
+    if (conflict) {
+      throw new Error("رمز الدخول مستخدم من حساب آخر");
+    }
+  }
+
+  return normalizedPin;
+}
+
+export async function updateUserProfile(id: number, input: Pick<InsertUser, "name">) {
+  const name = sanitizeRequiredText(input.name);
+
+  if (!name) {
+    throw new Error("اسم المستخدم مطلوب");
+  }
+
+  const db = await getDb();
+  if (db) {
+    await db.update(users).set({ name }).where(eq(users.id, id));
+    return getUserById(id);
+  }
+
+  const data = loadMockDb();
+  const existingUser = data.users.find((user: any) => user.id === id);
+
+  if (!existingUser) {
+    throw new Error("المستخدم غير موجود");
+  }
+
+  existingUser.name = name;
+  existingUser.updatedAt = new Date();
+  saveMockDb(data);
+
+  return existingUser;
+}
+
+export async function updateUserPin(id: number, currentPin: string, nextPin: string) {
+  const sanitizedCurrentPin = sanitizePin(currentPin);
+  const sanitizedNextPin = sanitizePin(nextPin);
+
+  if (sanitizedCurrentPin.length !== 4 || sanitizedNextPin.length !== 4) {
+    throw new Error("رمز الدخول يجب أن يتكون من 4 أرقام");
+  }
+
+  if (sanitizedCurrentPin === sanitizedNextPin) {
+    throw new Error("الرمز الجديد يجب أن يكون مختلفًا عن الحالي");
+  }
+
+  const existingUser = await getUserById(id);
+
+  if (!existingUser) {
+    throw new Error("المستخدم غير موجود");
+  }
+
+  if ((existingUser.pin ?? "") !== sanitizedCurrentPin) {
+    throw new Error("رمز الدخول الحالي غير صحيح");
+  }
+
+  const db = await getDb();
+  if (db) {
+    await db.update(users).set({ pin: sanitizedNextPin }).where(eq(users.id, id));
+    return { success: true } as const;
+  }
+
+  const data = loadMockDb();
+  const userIndex = data.users.findIndex((user: any) => user.id === id);
+
+  if (userIndex === -1) {
+    throw new Error("المستخدم غير موجود");
+  }
+
+  data.users[userIndex].pin = sanitizedNextPin;
+  data.users[userIndex].updatedAt = new Date();
+  saveMockDb(data);
+
+  return { success: true } as const;
+}
+
+export async function getUsers() {
+  const db = await getDb();
+  const rolePriority = {
+    admin: 0,
+    cashier: 1,
+    user: 2,
+  } as const;
+
+  const sortUsers = (items: User[]) =>
+    [...items].sort((left, right) => {
+      const roleDiff = rolePriority[left.role] - rolePriority[right.role];
+
+      if (roleDiff !== 0) {
+        return roleDiff;
+      }
+
+      return (left.name ?? "").localeCompare(right.name ?? "", "ar");
+    });
+
+  if (db) {
+    const items = await db.select().from(users);
+    return sortUsers(items);
+  }
+
+  const data = loadMockDb();
+  return sortUsers(data.users as User[]);
+}
+
+export async function createManagedUser(
+  input: Pick<InsertUser, "name" | "role"> & { pin: string; email?: string }
+) {
+  const name = sanitizeRequiredText(input.name);
+
+  if (!name) {
+    throw new Error("اسم المستخدم مطلوب");
+  }
+
+  const pin = await assertPinAvailable(input.pin);
+  const email = sanitizeOptionalText(input.email);
+  const payload: InsertUser = {
+    openId: `local-${randomUUID()}`,
+    name,
+    role: input.role,
+    pin,
+    email,
+    loginMethod: "pin",
+  };
+
+  const db = await getDb();
+
+  if (db) {
+    const [result] = await db.insert(users).values(payload);
+    return getUserById((result as any).insertId);
+  }
+
+  const data = loadMockDb();
+  const nextUserId =
+    data.users.reduce((maxId: number, user: any) => {
+      const currentId = Number(user.id) || 0;
+      return currentId > maxId ? currentId : maxId;
+    }, 0) + 1;
+
+  const newUser = {
+    id: nextUserId,
+    ...payload,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    lastSignedIn: new Date(),
+  };
+
+  data.users.push(newUser);
+  saveMockDb(data);
+
+  return newUser;
+}
+
+export async function updateManagedUser(
+  id: number,
+  input: Partial<Pick<InsertUser, "name" | "role">> & { pin?: string; email?: string }
+) {
+  const existingUser = await getUserById(id);
+
+  if (!existingUser) {
+    throw new Error("المستخدم غير موجود");
+  }
+
+  const updateSet: Partial<InsertUser> = {};
+
+  if (input.name !== undefined) {
+    const name = sanitizeRequiredText(input.name);
+
+    if (!name) {
+      throw new Error("اسم المستخدم مطلوب");
+    }
+
+    updateSet.name = name;
+  }
+
+  if (input.role !== undefined) {
+    updateSet.role = input.role;
+  }
+
+  if (input.email !== undefined) {
+    updateSet.email = sanitizeOptionalText(input.email);
+  }
+
+  if (input.pin !== undefined) {
+    updateSet.pin = await assertPinAvailable(input.pin, id);
+  }
+
+  const db = await getDb();
+
+  if (db) {
+    await db.update(users).set(updateSet).where(eq(users.id, id));
+    return getUserById(id);
+  }
+
+  const data = loadMockDb();
+  const userIndex = data.users.findIndex((user: any) => user.id === id);
+
+  if (userIndex === -1) {
+    throw new Error("المستخدم غير موجود");
+  }
+
+  data.users[userIndex] = {
+    ...data.users[userIndex],
+    ...updateSet,
+    updatedAt: new Date(),
+  };
+  saveMockDb(data);
+
+  return data.users[userIndex];
 }
 
 // ============ Categories Queries ============
@@ -195,18 +498,52 @@ export async function getProductByBarcode(barcode: string) {
   return loadMockDb().products.find((p: any) => p.barcode === barcode);
 }
 
+export async function getNextProductTrackingCode() {
+  const db = await getDb();
+
+  if (db) {
+    const result = await db
+      .select({
+        maxId: sql<number>`coalesce(max(${products.id}), 0)`,
+      })
+      .from(products);
+
+    const nextSequence = (Number(result[0]?.maxId ?? 0) || 0) + 1;
+    return formatProductTrackingCode(nextSequence);
+  }
+
+  const data = loadMockDb();
+  const nextSequence =
+    data.products.reduce((maxId: number, product: any) => {
+      const currentId = Number(product.id) || 0;
+      return currentId > maxId ? currentId : maxId;
+    }, 0) + 1;
+
+  return formatProductTrackingCode(nextSequence);
+}
+
 export async function createProduct(input: InsertProduct) {
+  const nextTrackingCode = await getNextProductTrackingCode();
+  const sanitizedInput = sanitizeProductInput({
+    ...input,
+    sku: input.sku?.trim() || nextTrackingCode,
+  });
   const db = await getDb();
   if (db) {
-    const [result] = await db.insert(products).values(input);
+    const [result] = await db.insert(products).values(sanitizedInput);
     return { insertId: (result as any).insertId };
   }
   const data = loadMockDb();
+  const nextProductId =
+    data.products.reduce((maxId: number, product: any) => {
+      const currentId = Number(product.id) || 0;
+      return currentId > maxId ? currentId : maxId;
+    }, 0) + 1;
   const newProduct = { 
-    id: data.products.length + 1, 
-    ...input, 
-    price: input.price.toString(),
-    costPrice: input.costPrice?.toString() ?? null,
+    id: nextProductId, 
+    ...sanitizedInput, 
+    price: sanitizedInput.price?.toString() ?? "0",
+    costPrice: sanitizedInput.costPrice?.toString() ?? null,
     createdAt: new Date(), 
     updatedAt: new Date() 
   };
@@ -216,12 +553,13 @@ export async function createProduct(input: InsertProduct) {
 }
 
 export async function updateProduct(id: number, input: Partial<InsertProduct>) {
+  const sanitizedInput = sanitizeProductInput(input);
   const db = await getDb();
-  if (db) return db.update(products).set(input).where(eq(products.id, id));
+  if (db) return db.update(products).set(sanitizedInput).where(eq(products.id, id));
   const data = loadMockDb();
   const idx = data.products.findIndex((p: any) => p.id === id);
   if (idx !== -1) {
-    data.products[idx] = { ...data.products[idx], ...input, updatedAt: new Date() };
+    data.products[idx] = { ...data.products[idx], ...sanitizedInput, updatedAt: new Date() };
     saveMockDb(data);
   }
 }

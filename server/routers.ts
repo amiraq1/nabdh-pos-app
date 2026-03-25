@@ -1,7 +1,7 @@
 import { COOKIE_NAME } from "@shared/const";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { publicProcedure, protectedProcedure, router } from "./_core/trpc";
+import { adminProcedure, publicProcedure, protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import * as db from "./db";
 import { sdk } from "./_core/sdk";
@@ -11,6 +11,52 @@ export const appRouter = router({
   system: systemRouter,
   auth: router({
     me: publicProcedure.query(opts => opts.ctx.user),
+    listUsers: adminProcedure.query(() => db.getUsers()),
+    updateProfile: protectedProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(2).max(80),
+        })
+      )
+      .mutation(({ ctx, input }) => db.updateUserProfile(ctx.user.id, input)),
+    createManagedUser: adminProcedure
+      .input(
+        z.object({
+          name: z.string().trim().min(2).max(80),
+          role: z.enum(["admin", "cashier", "user"]),
+          pin: z.string().length(4),
+          email: z.string().email().optional(),
+        })
+      )
+      .mutation(({ input }) => db.createManagedUser(input)),
+    updateManagedUser: adminProcedure
+      .input(
+        z.object({
+          id: z.number(),
+          name: z.string().trim().min(2).max(80).optional(),
+          role: z.enum(["admin", "cashier", "user"]).optional(),
+          pin: z.string().length(4).optional(),
+          email: z.string().email().optional(),
+        })
+      )
+      .mutation(({ ctx, input }) => {
+        if (input.id === ctx.user.id && input.role && input.role !== ctx.user.role) {
+          throw new Error("لا يمكن تغيير دور الحساب الحالي من هذه الشاشة");
+        }
+
+        const { id, ...data } = input;
+        return db.updateManagedUser(id, data);
+      }),
+    changePin: protectedProcedure
+      .input(
+        z.object({
+          currentPin: z.string().length(4),
+          newPin: z.string().length(4),
+        })
+      )
+      .mutation(({ ctx, input }) =>
+        db.updateUserPin(ctx.user.id, input.currentPin, input.newPin)
+      ),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
       ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
@@ -40,27 +86,28 @@ export const appRouter = router({
   categories: router({
     list: publicProcedure.query(() => db.getCategories()),
     get: publicProcedure.input(z.number()).query(({ input }) => db.getCategoryById(input)),
-    create: protectedProcedure
+    create: adminProcedure
       .input(z.object({ name: z.string(), description: z.string().optional(), imageUrl: z.string().optional() }))
       .mutation(({ input }) => db.createCategory(input)),
-    update: protectedProcedure
+    update: adminProcedure
       .input(z.object({ id: z.number(), name: z.string().optional(), description: z.string().optional(), imageUrl: z.string().optional() }))
       .mutation(({ input: { id, ...data } }) => db.updateCategory(id, data)),
-    delete: protectedProcedure.input(z.number()).mutation(({ input }) => db.deleteCategory(input)),
+    delete: adminProcedure.input(z.number()).mutation(({ input }) => db.deleteCategory(input)),
   }),
 
   // ============ Products Router ============
   products: router({
     list: publicProcedure.input(z.number().optional()).query(({ input }) => db.getProducts(input)),
     get: publicProcedure.input(z.number()).query(({ input }) => db.getProductById(input)),
+    nextTrackingCode: publicProcedure.query(() => db.getNextProductTrackingCode()),
     getBySku: publicProcedure.input(z.string()).query(({ input }) => db.getProductBySku(input)),
     getByBarcode: publicProcedure.input(z.string()).query(({ input }) => db.getProductByBarcode(input)),
-    create: protectedProcedure
+    create: adminProcedure
       .input(z.object({
         categoryId: z.number(),
         name: z.string(),
         description: z.string().optional(),
-        sku: z.string(),
+        sku: z.string().optional(),
         barcode: z.string().optional(),
         price: z.string(),
         costPrice: z.string().optional(),
@@ -69,7 +116,7 @@ export const appRouter = router({
         minStockLevel: z.number().default(10),
       }))
       .mutation(({ input }) => db.createProduct(input as any)),
-    update: protectedProcedure
+    update: adminProcedure
       .input(z.object({
         id: z.number(),
         categoryId: z.number().optional(),
@@ -84,13 +131,13 @@ export const appRouter = router({
         minStockLevel: z.number().optional(),
       }))
       .mutation(({ input: { id, ...data } }) => db.updateProduct(id, data as any)),
-    delete: protectedProcedure.input(z.number()).mutation(({ input }) => db.deleteProduct(input)),
+    delete: adminProcedure.input(z.number()).mutation(({ input }) => db.deleteProduct(input)),
   }),
 
   // ============ Stock Router ============
   stock: router({
     history: publicProcedure.input(z.number()).query(({ input }) => db.getStockHistory(input)),
-    addHistory: protectedProcedure
+    addHistory: adminProcedure
       .input(z.object({
         productId: z.number(),
         quantityChange: z.number(),
@@ -163,7 +210,7 @@ export const appRouter = router({
   // ============ Expenses Router ============
   expenses: router({
     list: publicProcedure.query(() => db.getExpenses()),
-    create: protectedProcedure
+    create: adminProcedure
       .input(z.object({
         category: z.string(),
         description: z.string(),
@@ -171,7 +218,7 @@ export const appRouter = router({
         date: z.date().optional(),
       }))
       .mutation(({ input }) => db.createExpense(input as any)),
-    delete: protectedProcedure.input(z.number()).mutation(({ input }) => db.deleteExpense(input)),
+    delete: adminProcedure.input(z.number()).mutation(({ input }) => db.deleteExpense(input)),
   }),
 });
 

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,8 +12,10 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import PageShell from "@/components/PageShell";
 import PageHeader from "@/components/PageHeader";
+import { hasPermission } from "@shared/permissions";
 
 export default function InventoryPage() {
+  const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -25,6 +28,7 @@ export default function InventoryPage() {
   const { data: products, isLoading: productsLoading, refetch: refetchProducts } = trpc.products.list.useQuery();
   const { data: stockHistory, isLoading: historyLoading, refetch: refetchHistory } = trpc.stock.history.useQuery(selectedProduct || 0);
   const addHistoryMutation = trpc.stock.addHistory.useMutation();
+  const canAdjustInventory = hasPermission((user as any)?.role, "inventory.adjust");
 
   const filteredProducts = useMemo(() => {
     return products?.filter((p: any) =>
@@ -69,7 +73,7 @@ export default function InventoryPage() {
           icon={Box}
           actions={
             <DialogTrigger asChild>
-              <Button className="h-14 px-8 rounded-2xl font-display font-bold text-lg shadow-xl shadow-primary/20 gap-3">
+              <Button className="h-14 px-8 rounded-2xl font-display font-bold text-lg shadow-xl shadow-primary/20 gap-3" disabled={!canAdjustInventory}>
                 <RefreshCcw className="w-5 h-5" />
                 تعديل الرصيد
               </Button>
@@ -144,7 +148,7 @@ export default function InventoryPage() {
                 />
               </div>
 
-              <Button type="submit" className="w-full h-14 rounded-2xl text-lg font-display font-bold shadow-xl shadow-primary/20" disabled={addHistoryMutation.isPending}>
+              <Button type="submit" className="w-full h-14 rounded-2xl text-lg font-display font-bold shadow-xl shadow-primary/20" disabled={addHistoryMutation.isPending || !canAdjustInventory}>
                 {addHistoryMutation.isPending ? <Loader2 className="w-6 h-6 animate-spin" /> : "تأكيد العملية"}
               </Button>
             </form>
