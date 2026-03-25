@@ -2,9 +2,10 @@ import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch, useLocation } from "wouter";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, Variants } from "framer-motion";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import BottomNav from "./components/BottomNav";
 
 const Home = lazy(() => import("./pages/Home"));
 const POSPage = lazy(() => import("./pages/POSPage"));
@@ -16,7 +17,7 @@ const ExpensesPage = lazy(() => import("./pages/ExpensesPage"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const pageVariants = {
+const pageVariants: Variants = {
   initial: { opacity: 0, y: 15, filter: "blur(4px)" },
   animate: { opacity: 1, y: 0, filter: "blur(0px)", transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] } },
   exit: { opacity: 0, y: -10, filter: "blur(2px)", transition: { duration: 0.25, ease: [0.22, 1, 0.36, 1] } }
@@ -65,10 +66,11 @@ function RouteLoadingFallback() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="light">
+      <ThemeProvider defaultTheme="light" switchable>
         <TooltipProvider delayDuration={300}>
           <Toaster position="bottom-center" toastOptions={{ className: 'font-display tracking-wide border-border/50 backdrop-blur-md' }} />
           <AnimatedRouter />
+          <BottomNav />
         </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>

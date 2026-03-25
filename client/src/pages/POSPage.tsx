@@ -14,6 +14,7 @@ import BarcodeScanner from "@/components/BarcodeScanner";
 import { RETURN_POLICIES, STORE_BRANCHES, STORE_NAME } from "@/lib/invoice";
 import { formatCurrency } from "@/lib/utils";
 import { native } from "@/_core/native";
+import { useCartStore } from "@/stores/cartStore";
 
 interface CartItem {
   productId: number;
@@ -44,15 +45,10 @@ function shouldTrackEdgeSwipe(target: EventTarget | null, touchX: number) {
 
 export default function POSPage() {
   const [, navigate] = useLocation();
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const { cart, discount, discountType, paymentMethod, customerName, customerPhone, addItem, updateQuantity: updateStoreQuantity, removeItem: removeStoreItem, setDiscount, setDiscountType, setCustomerDetails, setPaymentMethod, clearCart } = useCartStore();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [discount, setDiscount] = useState(0);
-  const [discountType, setDiscountType] = useState<"percent" | "amount">("percent");
   const [taxRate] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState("cash");
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [showCheckout, setShowCheckout] = useState(false);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
@@ -76,36 +72,13 @@ export default function POSPage() {
 
   const addToCart = useCallback((product: any) => {
     native.vibrate();
-    if (product.quantity <= 0) {
-      toast.error("نفدت الكمية", { className: "font-display text-destructive border-destructive" });
-      return;
+    const result = addItem(product, product.quantity);
+    if (!result.success) {
+      toast.error(result.message, { className: "font-display text-destructive border-destructive" });
+    } else {
+      toast.success(result.message, { duration: 1000 });
     }
-
-    setCart((currentCart) => {
-      const existingItem = currentCart.find(item => item.productId === product.id);
-      if (existingItem) {
-        if (existingItem.quantity >= product.quantity) {
-          toast.error("بلغت الحد الأقصى للمخزون");
-          return currentCart;
-        }
-        toast.success(`تمت إضافة ${product.name}`, { duration: 1000 });
-        return currentCart.map(item =>
-          item.productId === product.id
-            ? { ...item, quantity: item.quantity + 1, subtotal: (item.quantity + 1) * item.price }
-            : item
-        );
-      } else {
-        toast.success(`تمت إضافة ${product.name}`, { duration: 1000 });
-        return [...currentCart, {
-          productId: product.id,
-          name: product.name,
-          price: parseFloat(product.price),
-          quantity: 1,
-          subtotal: parseFloat(product.price),
-        }];
-      }
-    });
-  }, []);
+  }, [addItem]);
 
   const handleBarcodeDetectedLocal = useCallback((barcode: string) => {
     if (!products) return;
@@ -143,12 +116,12 @@ export default function POSPage() {
         return;
       }
 
-      toast.error(`ط§ظ„ط±ظ‚ظ… ${trimmedCode} ط؛ظٹط± ظ…ط¹ط±ظ‘ظپ ظپظٹ ط§ظ„ظ†ط¸ط§ظ…`, {
+      toast.error(`الرقم ${trimmedCode} غير معرّف في النظام`, {
         className: "font-display",
       });
     } catch (error) {
       console.error("Barcode lookup error:", error);
-      toast.error("طھط¹ط°ط± ط§ظ„ط¹ط«ظˆط± ط¹ظ„ظ‰ ط§ظ„ظ…ظ†طھط¬. طھط­ظ‚ظ‚ ظ…ظ† ط§طھطµط§ظ„ ط§ظ„طھط·ط¨ظٹظ‚ ط¨ط§ظ„ط®ط§ط¯ظ….");
+      toast.error("تعذر العثور على المنتج. تحقق من اتصال التطبيق بالخادم.");
     }
   }, [handleBarcodeDetectedLocal, addToCart, products, utils.products.getByBarcode, utils.products.getBySku]);
 
@@ -192,26 +165,15 @@ export default function POSPage() {
 
 
   const removeFromCart = useCallback((productId: number) => {
-    setCart((current) => current.filter(item => item.productId !== productId));
-  }, []);
+    removeStoreItem(productId);
+  }, [removeStoreItem]);
 
   const updateQuantity = useCallback((productId: number, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(productId);
-      return;
-    }
-    setCart((current) => current.map(item =>
-      item.productId === productId
-        ? { ...item, quantity, subtotal: quantity * item.price }
-        : item
-    ));
-  }, [removeFromCart]);
-
-  const handleSwipeDelete = useCallback((info: PanInfo, productId: number) => {
-    if (info.offset.x > 80 || info.offset.x < -80) {
-      removeFromCart(productId);
-    }
-  }, [removeFromCart]);
+    const product = products?.find((p: any) => p.id === productId);
+    if (!product) return;
+    const success = updateStoreQuantity(productId, quantity, product.quantity);
+    if (!success) toast.error("تجاوز الحد المتوفر للمخزون", { duration: 1000 });
+  }, [products, updateStoreQuantity]);
 
   const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.subtotal, 0), [cart]);
   const discountAmount = useMemo(() => {
@@ -257,9 +219,9 @@ export default function POSPage() {
         taxAmount,
         subtotal
       });
-      setCart([]);
-      setCustomerName("");
-      setCustomerPhone("");
+      clearCart();
+      
+      setCustomerDetails("", "");
       setDiscount(0);
     } catch (error) {
       toast.error("تعذر إتمام العملية، يرجى المحاولة مرة أخرى.");
@@ -659,7 +621,7 @@ export default function POSPage() {
                   <div className="relative">
                     <Input
                       value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
+                      onChange={(e) => setCustomerDetails(e.target.value, customerPhone)}
                       placeholder="اسم العميل (اختياري)"
                       className="h-12 bg-background/50 border-border/50 rounded-xl"
                     />

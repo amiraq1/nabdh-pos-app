@@ -1,6 +1,6 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { ShoppingCart, Package, BarChart3, Receipt, LogOut, ArrowRight, Wallet, TrendingUp, Users, LogIn } from "lucide-react";
+import { ShoppingCart, Package, BarChart3, Receipt, Boxes, ArrowRight, Wallet, TrendingUp, Users, LogIn, Layers } from "lucide-react";
 import { getLoginUrl } from "@/const";
 import { useLocation } from "wouter";
 import { useState } from "react";
@@ -138,8 +138,8 @@ export default function Home() {
   const dashboardItems = [
     { title: "نقطة البيع", desc: "فتح محطة الكاشير فوراً", icon: ShoppingCart, link: "/pos", color: "from-blue-500/20 to-indigo-500/20", iconColor: "text-blue-500" },
     { title: "المنتجات", desc: "إضافة وتعديل الأرصدة", icon: Package, link: "/products", color: "from-emerald-500/20 to-green-500/20", iconColor: "text-emerald-500" },
-    { title: "الفئات", desc: "أقسام المتجر", icon: Package, link: "/categories", color: "from-orange-500/20 to-amber-500/20", iconColor: "text-orange-500" },
-    { title: "المخزون", desc: "مراقبة النواقص والجرد", icon: LogOut, link: "/inventory", color: "from-rose-500/20 to-red-500/20", iconColor: "text-rose-500" },
+    { title: "الفئات", desc: "أقسام المتجر", icon: Layers, link: "/categories", color: "from-orange-500/20 to-amber-500/20", iconColor: "text-orange-500" },
+    { title: "المخزون", desc: "مراقبة النواقص والجرد", icon: Boxes, link: "/inventory", color: "from-rose-500/20 to-red-500/20", iconColor: "text-rose-500" },
     { title: "التقارير", desc: "الأرباح والمبيعات", icon: BarChart3, link: "/reports", color: "from-purple-500/20 to-fuchsia-500/20", iconColor: "text-purple-500" },
     { title: "المصاريف", desc: "سجل المدفوعات اليومية", icon: Receipt, link: "/expenses", color: "from-cyan-500/20 to-sky-500/20", iconColor: "text-cyan-500" },
   ];
@@ -161,7 +161,7 @@ export default function Home() {
               <div className="flex items-center gap-1.5 mt-0.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                  {native.isNative ? 'Native Status: Online' : 'Web Terminal Active'}
+                  {native.isNative ? 'الحالة: متصل' : 'محطة الويب نشطة'}
                 </span>
               </div>
             </div>

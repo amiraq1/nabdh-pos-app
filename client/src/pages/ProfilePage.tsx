@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, User, Shield, Moon, Sun, Monitor, Bell, History } from "lucide-react";
 import { useLocation } from "wouter";
-import { motion } from "framer-motion";
+import { motion, Variants } from "framer-motion";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -41,7 +41,7 @@ export default function ProfilePage() {
     native.vibrate();
   };
 
-  const containerVariants = {
+  const containerVariants: Variants = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
@@ -49,7 +49,7 @@ export default function ProfilePage() {
     }
   };
 
-  const itemVariants = {
+  const itemVariants: Variants = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
   };
@@ -98,7 +98,7 @@ export default function ProfilePage() {
               </h1>
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-accent/10 text-accent font-semibold text-sm">
                 <Shield className="w-4 h-4" />
-                {user?.role === "admin" ? "مدير النظام" : "كاشير"}
+                {(user as any)?.role === "admin" ? "مدير النظام" : "كاشير"}
               </span>
             </div>
           </motion.div>
@@ -143,7 +143,7 @@ export default function ProfilePage() {
                 <CardDescription>خصص الواجهة لتريح بصرك (قانون هيك لتقليل الجهد)</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-3 gap-2 p-1 bg-muted/50 rounded-xl">
+                <div className="grid grid-cols-2 gap-2 p-1 bg-muted/50 rounded-xl">
                   <Button 
                     variant={theme === "light" ? "default" : "ghost"}
                     className="rounded-lg h-12"
@@ -157,13 +157,6 @@ export default function ProfilePage() {
                     onClick={() => setTheme("dark")}
                   >
                     <Moon className="w-4 h-4 ml-2" /> داكن
-                  </Button>
-                  <Button 
-                    variant={theme === "system" ? "default" : "ghost"}
-                    className="rounded-lg h-12"
-                    onClick={() => setTheme("system")}
-                  >
-                    <Monitor className="w-4 h-4 ml-2" /> النظام
                   </Button>
                 </div>
               </CardContent>

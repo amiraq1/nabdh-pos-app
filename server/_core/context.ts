@@ -25,6 +25,7 @@ export async function createContext(
         email: "admin@example.com",
         role: "admin",
         loginMethod: "mock",
+        pin: null,
         createdAt: new Date(),
         updatedAt: new Date(),
         lastSignedIn: new Date()

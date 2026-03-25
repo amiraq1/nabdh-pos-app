@@ -1,4 +1,5 @@
 import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 import { UNAUTHED_ERR_MSG } from '@shared/const';
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
@@ -23,16 +24,22 @@ const redirectToLoginIfUnauthorized = (error: unknown) => {
 
 queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
-    const error = event.query.state.error;
+    const error = event.query.state.error as Error;
     redirectToLoginIfUnauthorized(error);
+    if (error?.message && !error.message.includes(UNAUTHED_ERR_MSG)) {
+      toast.error(`فشل جلب البيانات: ${error.message}`, { className: "font-display text-destructive border-destructive font-bold" });
+    }
     console.error("[API Query Error]", error);
   }
 });
 
 queryClient.getMutationCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
-    const error = event.mutation.state.error;
+    const error = event.mutation.state.error as Error;
     redirectToLoginIfUnauthorized(error);
+    if (error?.message && !error.message.includes(UNAUTHED_ERR_MSG)) {
+      toast.error(`فشلت العملية: ${error.message}`, { className: "font-display text-destructive border-destructive font-bold" });
+    }
     console.error("[API Mutation Error]", error);
   }
 });
