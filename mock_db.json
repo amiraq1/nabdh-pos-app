@@ -26,7 +26,21 @@
       "updatedAt": "2026-03-22T22:41:37.994Z"
     }
   ],
-  "products": [],
+  "products": [
+    {
+      "id": 1,
+      "categoryId": 2,
+      "name": "واير",
+      "sku": "PRD-00001",
+      "barcode": "6260000599872",
+      "price": "500",
+      "costPrice": null,
+      "quantity": 1,
+      "minStockLevel": 10,
+      "createdAt": "2026-03-25T18:29:11.481Z",
+      "updatedAt": "2026-03-25T18:29:11.481Z"
+    }
+  ],
   "stockHistory": [
     {
       "id": 1,
@@ -67,6 +81,14 @@
       "reason": "adjustment",
       "notes": "",
       "createdAt": "2026-03-22T22:50:34.248Z"
+    },
+    {
+      "id": 6,
+      "productId": 1,
+      "quantityChange": -1,
+      "reason": "sale",
+      "notes": "فاتورة مبيعات رقم: INV-369804",
+      "createdAt": "2026-03-25T18:29:28.363Z"
     }
   ],
   "sales": [
@@ -117,6 +139,22 @@
       "createdAt": "2026-03-24T13:46:12.655Z",
       "updatedAt": "2026-03-24T13:46:12.655Z",
       "status": "completed"
+    },
+    {
+      "id": 4,
+      "invoiceNumber": "INV-369804",
+      "totalAmount": "500",
+      "taxAmount": "0",
+      "discountAmount": "0",
+      "finalAmount": "500",
+      "paymentMethod": "cash",
+      "customerName": "عميل عام",
+      "customerPhone": "",
+      "notes": "",
+      "userId": 1,
+      "createdAt": "2026-03-25T18:29:28.362Z",
+      "updatedAt": "2026-03-25T18:29:28.362Z",
+      "status": "completed"
     }
   ],
   "saleItems": [
@@ -146,6 +184,15 @@
       "unitPrice": "699.95",
       "subtotal": "699.95",
       "createdAt": "2026-03-24T13:46:12.868Z"
+    },
+    {
+      "id": 4,
+      "productId": 1,
+      "quantity": 1,
+      "unitPrice": "500",
+      "subtotal": "500",
+      "saleId": 4,
+      "createdAt": "2026-03-25T18:29:28.362Z"
     }
   ]
 }
