@@ -47,6 +47,13 @@ import { formatCurrency } from "@/lib/utils";
 import { native } from "@/_core/native";
 import { useCartStore } from "@/stores/cartStore";
 import { usePrinterStore } from "@/stores/printerStore";
+import { offlineCheckout, useOfflineStore } from "@/stores/offlineStore";
+import {
+  getCachedProducts,
+  getCachedCategories,
+  getCachedProductByBarcode,
+  getCachedProductBySku,
+} from "@/lib/offline-db";
 
 const EDGE_SWIPE_ZONE_PX = 32;
 const DEFAULT_PRINTER_STATUS: PrinterStatus = {
@@ -126,12 +133,43 @@ export default function POSPage() {
   const barcodeBuffer = useRef("");
   const barcodeTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const { data: products, isLoading: productsLoading } = trpc.products.list.useQuery(
+  const offlineStatus = useOfflineStore((s) => s.status);
+  const isOffline = offlineStatus === "offline";
+
+  // Products: tRPC query with offline fallback
+  const productsQuery = trpc.products.list.useQuery(
     selectedCategory !== "all" ? parseInt(selectedCategory, 10) : undefined
   );
-  const { data: categories } = trpc.categories.list.useQuery();
+  const categoriesQuery = trpc.categories.list.useQuery();
   const checkoutMutation = trpc.sales.checkout.useMutation();
   const utils = trpc.useUtils();
+
+  // Offline fallback state
+  const [offlineProducts, setOfflineProducts] = useState<any[] | null>(null);
+  const [offlineCategories, setOfflineCategories] = useState<any[] | null>(null);
+
+  // Load from IndexedDB when tRPC fails or we're offline
+  useEffect(() => {
+    if (productsQuery.isError || (isOffline && !productsQuery.data)) {
+      const catId = selectedCategory !== "all" ? parseInt(selectedCategory, 10) : undefined;
+      getCachedProducts(catId).then(setOfflineProducts).catch(() => {});
+    } else {
+      setOfflineProducts(null);
+    }
+  }, [productsQuery.isError, isOffline, productsQuery.data, selectedCategory]);
+
+  useEffect(() => {
+    if (categoriesQuery.isError || (isOffline && !categoriesQuery.data)) {
+      getCachedCategories().then(setOfflineCategories).catch(() => {});
+    } else {
+      setOfflineCategories(null);
+    }
+  }, [categoriesQuery.isError, isOffline, categoriesQuery.data]);
+
+  // Use server data when available, otherwise fall back to cached
+  const products = productsQuery.data ?? offlineProducts ?? undefined;
+  const categories = categoriesQuery.data ?? offlineCategories ?? undefined;
+  const productsLoading = productsQuery.isLoading && !offlineProducts;
 
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
@@ -264,13 +302,32 @@ export default function POSPage() {
 
         addToCart(product);
       } catch (error) {
+        // Offline fallback: search IndexedDB
+        try {
+          const cachedProduct =
+            (await getCachedProductByBarcode(trimmedCode)) ||
+            (await getCachedProductBySku(trimmedCode));
+
+          if (cachedProduct) {
+            addToCart(cachedProduct);
+            return;
+          }
+        } catch {
+          // IndexedDB also failed — fall through
+        }
+
         console.error("Barcode lookup error:", error);
-        toast.error("تعذر العثور على المنتج. تحقّق من اتصال التطبيق بالخادم.");
+        toast.error(
+          isOffline
+            ? `الرقم ${trimmedCode} غير موجود في البيانات المحلية`
+            : "تعذر العثور على المنتج. تحقّق من اتصال التطبيق بالخادم."
+        );
       }
     },
     [
       addToCart,
       handleBarcodeDetectedLocal,
+      isOffline,
       products,
       utils.products.getByBarcode,
       utils.products.getBySku,
@@ -580,26 +637,28 @@ export default function POSPage() {
 
     setIsProcessing(true);
 
-    try {
-      const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+    const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+    const checkoutPayload = {
+      invoiceNumber,
+      totalAmount: subtotal.toString(),
+      taxAmount: taxAmount.toString(),
+      discountAmount: discountAmount.toString(),
+      finalAmount: total.toString(),
+      paymentMethod,
+      customerName: customerName || "عميل عام",
+      customerPhone,
+      notes: "",
+      items: cart.map(item => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.price.toString(),
+        subtotal: item.subtotal.toString(),
+      })),
+    };
 
-      const sale = await checkoutMutation.mutateAsync({
-        invoiceNumber,
-        totalAmount: subtotal.toString(),
-        taxAmount: taxAmount.toString(),
-        discountAmount: discountAmount.toString(),
-        finalAmount: total.toString(),
-        paymentMethod,
-        customerName: customerName || "عميل عام",
-        customerPhone,
-        notes: "",
-        items: cart.map(item => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          unitPrice: item.price.toString(),
-          subtotal: item.subtotal.toString(),
-        })),
-      });
+    try {
+      // Try server-side checkout first
+      const sale = await checkoutMutation.mutateAsync(checkoutPayload);
 
       void utils.products.list.invalidate();
 
@@ -624,9 +683,47 @@ export default function POSPage() {
       clearCart();
       setCustomerDetails("", "");
       setDiscount(0);
-    } catch (error) {
-      toast.error("تعذر إتمام العملية، يرجى المحاولة مرة أخرى.");
-      console.error("Checkout error:", error);
+    } catch (error: any) {
+      // Check if it's a network error → save offline
+      const isNetworkError =
+        !navigator.onLine ||
+        /fetch failed|NetworkError|ERR_CONNECTION|ERR_NETWORK|API_REQUEST_TIMEOUT|Failed to fetch/i.test(
+          error?.message || ""
+        );
+
+      if (isNetworkError) {
+        try {
+          const offlineResult = await offlineCheckout(checkoutPayload);
+
+          toast.success("تم حفظ البيع محلياً — ستتم المزامنة عند عودة الاتصال", {
+            className: "font-display bg-amber-500 text-white border-amber-600",
+            duration: 4000,
+          });
+
+          lastAutoPrintedInvoice.current = null;
+          setCompletedInvoice({
+            invoiceNumber,
+            cartItems: [...cart],
+            total,
+            discountAmount,
+            subtotal,
+            paymentMethod,
+            customerName: customerName || "عميل عام",
+            customerPhone,
+            createdAt: new Date().toISOString(),
+          });
+
+          clearCart();
+          setCustomerDetails("", "");
+          setDiscount(0);
+        } catch (offlineError) {
+          toast.error("تعذر حفظ العملية. يرجى المحاولة مرة أخرى.");
+          console.error("Offline checkout error:", offlineError);
+        }
+      } else {
+        toast.error("تعذر إتمام العملية، يرجى المحاولة مرة أخرى.");
+        console.error("Checkout error:", error);
+      }
     } finally {
       setIsProcessing(false);
     }

@@ -1,7 +1,7 @@
 {
   "short_name": "نـبـض",
   "name": "نـبـض POS - نظام إدارة المبيعات الذكي",
-  "description": "حل احترافي متكامل لإدارة المبيعات والمخزون والفواتير بسهولة وكفاءة",
+  "description": "حل احترافي متكامل لإدارة المبيعات والمخزون والفواتير — يعمل بدون إنترنت",
   "icons": [
     {
       "src": "favicon.ico",
@@ -10,10 +10,13 @@
     }
   ],
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "theme_color": "#3b82f6",
+  "theme_color": "#166534",
   "background_color": "#ffffff",
   "orientation": "any",
   "dir": "rtl",
-  "lang": "ar-SA"
+  "lang": "ar-SA",
+  "categories": ["business", "finance", "productivity"],
+  "prefer_related_applications": false
 }

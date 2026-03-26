@@ -6,6 +6,7 @@ import { AnimatePresence, motion, Variants } from "framer-motion";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import BottomNav from "./components/BottomNav";
+import OfflineIndicator from "./components/OfflineIndicator";
 
 const Home = lazy(() => import("./pages/Home"));
 const POSPage = lazy(() => import("./pages/POSPage"));
@@ -69,6 +70,7 @@ function App() {
       <ThemeProvider defaultTheme="light" switchable>
         <TooltipProvider delayDuration={300}>
           <Toaster position="bottom-center" toastOptions={{ className: 'font-display tracking-wide border-border/50 backdrop-blur-md' }} />
+          <OfflineIndicator />
           <AnimatedRouter />
           <BottomNav />
         </TooltipProvider>

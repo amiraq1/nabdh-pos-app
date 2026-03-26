@@ -10,11 +10,14 @@ import { Loader2, UserCircle } from "lucide-react";
 import { native } from "@/_core/native";
 import { motion } from "framer-motion";
 import { hasPermission, type AppPermission } from "@shared/permissions";
+import { useOfflineStore } from "@/stores/offlineStore";
 
 export default function Home() {
   const { user, loading, isAuthenticated, refresh } = useAuth();
   const [, navigate] = useLocation();
   const [pin, setPin] = useState("");
+  const offlineStatus = useOfflineStore((s) => s.status);
+  const pendingCount = useOfflineStore((s) => s.pendingCount);
   
   const loginMutation = trpc.auth.loginByPin.useMutation({
     onSuccess: () => {
@@ -178,9 +181,15 @@ export default function Home() {
             <div>
               <h1 className="text-xl font-display font-black text-foreground tracking-tight">نظام نـبـض</h1>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  offlineStatus === 'online' ? 'bg-emerald-500 animate-pulse' :
+                  offlineStatus === 'syncing' ? 'bg-blue-500 animate-spin' :
+                  'bg-amber-500 animate-pulse'
+                }`} />
                 <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                  {native.isNative ? 'الحالة: متصل' : 'محطة الويب نشطة'}
+                  {offlineStatus === 'online' ? (native.isNative ? 'الحالة: متصل' : 'محطة الويب نشطة') :
+                   offlineStatus === 'syncing' ? 'جارِ المزامنة...' :
+                   `غير متصل${pendingCount > 0 ? ` • ${pendingCount} معلّقة` : ''}`}
                 </span>
               </div>
             </div>
