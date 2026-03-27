@@ -1,36 +1,44 @@
-import { useEffect, useRef } from "react";
-import { useOfflineStore } from "@/stores/offlineStore";
+import { useState, useEffect } from "react";
+import { Network } from "@capacitor/network";
+import { toast } from "sonner";
 
 /**
- * Hook that monitors navigator.onLine and sets the offline store status.
- * Also triggers sync when coming back online.
+ * Stage 1: Smart Network Monitoring Hook (Note 4)
+ * Tracks connectivity and provides real-time state.
  */
-export function useNetworkStatus(onReconnect?: () => void) {
-  const { status, setStatus, pendingCount } = useOfflineStore();
-  const onReconnectRef = useRef(onReconnect);
-  onReconnectRef.current = onReconnect;
+export function useNetworkStatus() {
+  const [isOnline, setIsOnline] = useState(true);
 
   useEffect(() => {
-    const handleOnline = () => {
-      setStatus("online");
-      onReconnectRef.current?.();
+    let unregister: (() => void) | undefined;
+
+    const setupListener = async () => {
+      // 1. Initial Status
+      const status = await Network.getStatus();
+      setIsOnline(status.connected);
+
+      // 2. Continuous Listener
+      const listener = await Network.addListener("networkStatusChange", (newStatus) => {
+        setIsOnline(newStatus.connected);
+        
+        if (newStatus.connected) {
+          toast.success("عادت الشبكة! جاري مزامنة البيانات...", { duration: 3000 });
+        } else {
+          toast.warning("أنت أوفلاين حالياً. يمكنك الاستمرار في البيع.", { duration: 5000 });
+        }
+      });
+
+      unregister = () => {
+        void listener.remove();
+      };
     };
 
-    const handleOffline = () => {
-      setStatus("offline");
-    };
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    // Set initial state
-    setStatus(navigator.onLine ? "online" : "offline");
+    void setupListener();
 
     return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
+      if (unregister) unregister();
     };
-  }, [setStatus]);
+  }, []);
 
-  return { status, pendingCount, isOnline: status !== "offline" };
+  return { isOnline };
 }

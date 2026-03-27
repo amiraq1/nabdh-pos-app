@@ -235,13 +235,9 @@ export async function updateUserProfile(id: number, input: Pick<InsertUser, "nam
 
 export async function updateUserPin(id: number, currentPin: string, nextPin: string) {
   const sanitizedCurrentPin = sanitizePin(currentPin);
-  const sanitizedNextPin = sanitizePin(nextPin);
+  const uniqueNextPin = await assertPinAvailable(nextPin, id);
 
-  if (sanitizedCurrentPin.length !== 4 || sanitizedNextPin.length !== 4) {
-    throw new Error("رمز الدخول يجب أن يتكون من 4 أرقام");
-  }
-
-  if (sanitizedCurrentPin === sanitizedNextPin) {
+  if (sanitizedCurrentPin === uniqueNextPin) {
     throw new Error("الرمز الجديد يجب أن يكون مختلفًا عن الحالي");
   }
 
@@ -257,7 +253,7 @@ export async function updateUserPin(id: number, currentPin: string, nextPin: str
 
   const db = await getDb();
   if (db) {
-    await db.update(users).set({ pin: sanitizedNextPin }).where(eq(users.id, id));
+    await db.update(users).set({ pin: uniqueNextPin }).where(eq(users.id, id));
     return { success: true } as const;
   }
 
@@ -268,7 +264,7 @@ export async function updateUserPin(id: number, currentPin: string, nextPin: str
     throw new Error("المستخدم غير موجود");
   }
 
-  data.users[userIndex].pin = sanitizedNextPin;
+  data.users[userIndex].pin = uniqueNextPin;
   data.users[userIndex].updatedAt = new Date();
   saveMockDb(data);
 
@@ -331,11 +327,7 @@ export async function createManagedUser(
   }
 
   const data = loadMockDb();
-  const nextUserId =
-    data.users.reduce((maxId: number, user: any) => {
-      const currentId = Number(user.id) || 0;
-      return currentId > maxId ? currentId : maxId;
-    }, 0) + 1;
+  const nextUserId = getNextId(data.users);
 
   const newUser = {
     id: nextUserId,
@@ -432,7 +424,7 @@ export async function createCategory(input: InsertCategory) {
     return { insertId: (result as any).insertId };
   }
   const data = loadMockDb();
-  const newCat = { id: data.categories.length + 1, ...input, createdAt: new Date(), updatedAt: new Date() };
+  const newCat = { id: getNextId(data.categories), ...input, createdAt: new Date(), updatedAt: new Date() };
   data.categories.push(newCat);
   saveMockDb(data);
   return { insertId: newCat.id };
@@ -534,11 +526,7 @@ export async function createProduct(input: InsertProduct) {
     return { insertId: (result as any).insertId };
   }
   const data = loadMockDb();
-  const nextProductId =
-    data.products.reduce((maxId: number, product: any) => {
-      const currentId = Number(product.id) || 0;
-      return currentId > maxId ? currentId : maxId;
-    }, 0) + 1;
+  const nextProductId = getNextId(data.products);
   const newProduct = { 
     id: nextProductId, 
     ...sanitizedInput, 
@@ -586,7 +574,7 @@ export async function addStockHistory(input: InsertStockHistory) {
     return { insertId: (result as any).insertId };
   }
   const data = loadMockDb();
-  const entry = { id: data.stockHistory.length + 1, ...input, createdAt: new Date() };
+  const entry = { id: getNextId(data.stockHistory), ...input, createdAt: new Date() };
   data.stockHistory.push(entry);
   saveMockDb(data);
   return { insertId: entry.id };
@@ -625,7 +613,7 @@ export async function createSale(input: InsertSale) {
   }
   const data = loadMockDb();
   const newSale = { 
-    id: data.sales.length + 1, 
+    id: getNextId(data.sales), 
     ...input, 
     totalAmount: input.totalAmount.toString(),
     finalAmount: input.finalAmount.toString(),
@@ -673,7 +661,7 @@ export async function checkoutTransaction(
   const data = loadMockDb();
 
   const newSale = {
-    id: data.sales.length + 1,
+    id: getNextId(data.sales),
     ...saleInput,
     totalAmount: saleInput.totalAmount.toString(),
     finalAmount: saleInput.finalAmount.toString(),
@@ -685,7 +673,7 @@ export async function checkoutTransaction(
 
   for (const item of itemsInput) {
     data.saleItems.push({
-      id: data.saleItems.length + 1,
+      id: getNextId(data.saleItems),
       ...item,
       saleId: newSale.id,
       unitPrice: item.unitPrice.toString(),
@@ -699,7 +687,7 @@ export async function checkoutTransaction(
     }
 
     data.stockHistory.push({
-      id: data.stockHistory.length + 1,
+      id: getNextId(data.stockHistory),
       productId: item.productId,
       quantityChange: -item.quantity,
       reason: "sale",
@@ -727,7 +715,7 @@ export async function addSaleItem(input: InsertSaleItem) {
   }
   const data = loadMockDb();
   const newItem = { 
-    id: data.saleItems.length + 1, 
+    id: getNextId(data.saleItems), 
     ...input, 
     unitPrice: input.unitPrice.toString(),
     subtotal: input.subtotal.toString(),
@@ -801,7 +789,7 @@ export async function createExpense(input: InsertExpense) {
   }
   const data = loadMockDb();
   const newExp = { 
-    id: (data.expenses || []).length + 1, 
+    id: getNextId(data.expenses || []), 
     ...input, 
     amount: input.amount.toString(),
     date: input.date instanceof Date ? input.date : new Date(),
@@ -821,3 +809,6 @@ export async function deleteExpense(id: number) {
   saveMockDb(data);
 }
 
+function getNextId(items: Array<{ id: unknown }>) {
+  return items.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1;
+}

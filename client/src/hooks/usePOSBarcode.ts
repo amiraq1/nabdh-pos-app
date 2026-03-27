@@ -3,46 +3,66 @@ import { trpc } from "@/lib/trpc";
 import { getCachedProductByBarcode, getCachedProductBySku } from "@/lib/offline-db";
 import { toast } from "sonner";
 
+// Note 1: Define a clear Product Interface
+export interface POSProduct {
+  id: number;
+  name: string;
+  price: number;
+  barcode?: string | null;
+  sku?: string | null;
+  imageUrl?: string | null;
+  stock?: number;
+}
+
 export function usePOSBarcode({
   products,
   isOffline,
   addToCart,
 }: {
-  products: any[] | undefined;
+  products: POSProduct[] | undefined;
   isOffline: boolean;
   addToCart: (product: any) => void;
 }) {
   const utils = trpc.useUtils();
   const barcodeBuffer = useRef("");
-  const barcodeTimeout = useRef<NodeJS.Timeout | null>(null);
-
-  const handleBarcodeDetectedLocal = useCallback(
-    (barcode: string) => {
-      if (!products) return;
-      const product = products.find((item: any) => item.barcode === barcode || item.sku === barcode);
-      if (!product) {
-        toast.error(`الرقم ${barcode} غير معرّف في النظام`, { className: "font-display" });
-        return;
-      }
-      addToCart(product);
-    },
-    [products, addToCart]
-  );
+  // Note 4: Browser-compatible timeout type
+  const barcodeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleBarcodeDetected = useCallback(
     async (barcode: string) => {
       const trimmedCode = barcode.trim();
       if (!trimmedCode) return;
 
+      // Note 2: Direct local search first (The Efficiency Fix)
       const productFromVisibleList = products?.find(
-        (product: any) => product.barcode === trimmedCode || product.sku === trimmedCode
+        (p) => p.barcode === trimmedCode || p.sku === trimmedCode
       );
 
       if (productFromVisibleList) {
-        handleBarcodeDetectedLocal(trimmedCode);
+        addToCart(productFromVisibleList);
         return;
       }
 
+      // Note 3: Strict Offline Mode handling (Note 3 Fix)
+      if (isOffline) {
+        try {
+          const cachedProduct =
+            (await getCachedProductByBarcode(trimmedCode)) ||
+            (await getCachedProductBySku(trimmedCode));
+
+          if (cachedProduct) {
+            addToCart(cachedProduct);
+            return;
+          }
+        } catch (cacheError) {
+          console.warn("Offline cache lookup failed:", cacheError);
+        }
+        
+        toast.error(`الرقم ${trimmedCode} غير موجود في البيانات المحلية`);
+        return;
+      }
+
+      // Online Path: Fetch from network
       try {
         const product =
           (await utils.products.getByBarcode.fetch(trimmedCode)) ||
@@ -55,33 +75,23 @@ export function usePOSBarcode({
 
         addToCart(product);
       } catch (error) {
-        try {
-          const cachedProduct =
-            (await getCachedProductByBarcode(trimmedCode)) ||
-            (await getCachedProductBySku(trimmedCode));
-
-          if (cachedProduct) {
-            addToCart(cachedProduct);
-            return;
-          }
-        } catch {}
-
-        console.error("Barcode lookup error:", error);
-        toast.error(
-          isOffline
-            ? `الرقم ${trimmedCode} غير موجود في البيانات المحلية`
-            : "تعذر العثور على المنتج. تحقّق من اتصال التطبيق بالخادم."
-        );
+        console.error("Network barcode lookup error:", error);
+        toast.error("تعذر العثور على المنتج. تحقّق من اتصال التطبيق بالخادم.");
       }
     },
-    [addToCart, handleBarcodeDetectedLocal, isOffline, products, utils]
+    [addToCart, isOffline, products, utils]
   );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (["INPUT", "TEXTAREA", "SELECT"].includes((event.target as HTMLElement).tagName)) {
-        return;
-      }
+      const target = event.target as HTMLElement;
+      
+      // Note 6: Enhanced input detection
+      const isInput = ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || 
+                      target.isContentEditable || 
+                      target.getAttribute("data-no-barcode") === "true";
+                      
+      if (isInput) return;
 
       if (event.key === "Enter") {
         if (barcodeBuffer.current.length > 3) {
@@ -98,7 +108,7 @@ export function usePOSBarcode({
           clearTimeout(barcodeTimeout.current);
         }
 
-        // Increased timeout from 100ms to 150ms to prevent truncation by fast scanners
+        // Note 7: Heuristic timeout for fast scanners (150ms)
         barcodeTimeout.current = setTimeout(() => {
           barcodeBuffer.current = "";
         }, 150);

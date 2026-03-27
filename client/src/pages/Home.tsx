@@ -159,12 +159,17 @@ export default function Home() {
     "products.view",
     "categories.view",
     "inventory.view",
-    "reports.view",
+    "reports.view.own",
     "expenses.view",
   ];
-  const visibleDashboardItems = dashboardItems.filter((_, index) =>
-    hasPermission((user as any)?.role, dashboardPermissions[index])
-  );
+  const visibleDashboardItems = dashboardItems.filter((item, index) => {
+    const perm = dashboardPermissions[index];
+    if (item.title === "التقارير") {
+      return hasPermission((user as any)?.role, "reports.view.all") || 
+             hasPermission((user as any)?.role, "reports.view.own");
+    }
+    return hasPermission((user as any)?.role, perm);
+  });
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden pb-20">

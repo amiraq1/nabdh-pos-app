@@ -1,9 +1,7 @@
-import { useState, MutableRefObject } from "react";
 import { trpc } from "@/lib/trpc";
-import { offlineCheckout } from "@/stores/offlineStore";
-import { useCartStore } from "@/stores/cartStore";
+import { enqueueOfflineJob } from "@/lib/offline-queue";
 import { toast } from "sonner";
-import { PrintableInvoice } from "@/lib/bluetooth";
+import { type PrintableInvoice } from "@/lib/bluetooth";
 
 export interface POSCartItem {
   productId: number;
@@ -74,10 +72,9 @@ export function usePOSCheckout({
       })),
     };
 
-    const updateUIStateAfterSale = (saleData?: any) => {
+    const updateUIStateAfterSale = (isOffline = false) => {
       lastAutoPrintedInvoice.current = null;
       setCompletedInvoice({
-        ...(saleData || {}),
         invoiceNumber,
         cartItems: [...cart],
         total,
@@ -87,7 +84,8 @@ export function usePOSCheckout({
         customerName: customerName || "عميل عام",
         customerPhone,
         createdAt: new Date().toISOString(),
-      });
+        status: isOffline ? "pending_sync" : "synced"
+      } as any);
 
       clearCart();
       setCustomerDetails("", "");
@@ -114,14 +112,19 @@ export function usePOSCheckout({
 
       if (isNetworkError) {
         try {
-          await offlineCheckout(checkoutPayload);
+          // Log to the robust IndexedDB Queue
+          await enqueueOfflineJob({
+            id: invoiceNumber, // Idempotency
+            type: "checkout",
+            payload: checkoutPayload
+          });
 
-          toast.success("تم حفظ البيع محلياً — ستتم المزامنة عند عودة الاتصال", {
+          toast.success("تم حفظ العملية محلياً — ستتم المزامنة عند عودة الاتصال", {
             className: "font-display bg-amber-500 text-white border-amber-600",
             duration: 4000,
           });
 
-          updateUIStateAfterSale();
+          updateUIStateAfterSale(true);
         } catch (offlineError) {
           toast.error("تعذر حفظ العملية. يرجى المحاولة مرة أخرى.");
           console.error("Offline checkout error:", offlineError);

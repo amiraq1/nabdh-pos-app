@@ -1,35 +1,29 @@
 export type AppRole = "admin" | "cashier" | "user";
 
-export type AppPermission =
-  | "dashboard.view"
-  | "profile.view"
-  | "profile.editSelf"
-  | "profile.changePin"
-  | "settings.api"
-  | "pos.use"
-  | "products.view"
-  | "products.manage"
-  | "categories.view"
-  | "categories.manage"
-  | "inventory.view"
-  | "inventory.adjust"
-  | "reports.view"
-  | "expenses.view"
-  | "expenses.manage";
+/**
+ * مجموعات الصلاحيات لتنظيم العرض في واجهة الإدارة
+ */
+export const PERMISSION_GROUPS = [
+  "الحساب",
+  "التشغيل",
+  "المبيعات",
+  "المخزون",
+  "التحليلات",
+  "الإدارة",
+] as const;
 
-export type PermissionDefinition = {
-  key: AppPermission;
-  label: string;
-  description: string;
-  group: "الحساب" | "المبيعات" | "المخزون" | "التحليلات" | "الإدارة";
-};
+export type PermissionGroup = typeof PERMISSION_GROUPS[number];
 
-export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
+/**
+ * تعريفات الصلاحيات (Single Source of Truth)
+ * يتم استخراج نوع AppPermission من مفاتيح (keys) هذه المصفوفة تلقائياً.
+ */
+export const PERMISSION_DEFINITIONS = [
   {
     key: "dashboard.view",
     label: "عرض اللوحة الرئيسية",
-    description: "الوصول إلى لوحة التحكم والتنقل بين الوحدات المسموح بها",
-    group: "الحساب",
+    description: "الوصول إلى لوحة التحكم والتنقل بين الوحدات",
+    group: "التشغيل",
   },
   {
     key: "profile.view",
@@ -52,14 +46,14 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   {
     key: "settings.api",
     label: "ضبط عنوان الخادم",
-    description: "تغيير عنوان API عند تبدل الشبكة أو بيئة العمل",
+    description: "تغيير عنوان API عند تبدل الشبكة",
     group: "الإدارة",
   },
   {
     key: "pos.use",
     label: "استخدام نقطة البيع",
     description: "فتح الكاشير وإتمام الفواتير والطباعة",
-    group: "المبيعات",
+    group: "التشغيل",
   },
   {
     key: "products.view",
@@ -98,9 +92,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     group: "المخزون",
   },
   {
-    key: "reports.view",
-    label: "عرض التقارير",
-    description: "الوصول إلى تقارير الأداء والمبيعات",
+    key: "reports.view.all",
+    label: "عرض كافة التقارير",
+    description: "الوصول الشامل لتقارير الأداء والأرباح والمبيعات للكل",
+    group: "التحليلات",
+  },
+  {
+    key: "reports.view.own",
+    label: "عرض تقاريري الشخصية",
+    description: "الوصول إلى تقارير المبيعات والأداء الخاصة بهذا الحساب فقط",
     group: "التحليلات",
   },
   {
@@ -115,10 +115,15 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
     description: "إضافة المصروفات أو حذفها",
     group: "الإدارة",
   },
-];
+] as const;
 
-export const ROLE_PERMISSIONS: Record<AppRole, AppPermission[]> = {
-  admin: PERMISSION_DEFINITIONS.map(permission => permission.key),
+export type AppPermission = typeof PERMISSION_DEFINITIONS[number]["key"];
+
+/**
+ * مصفوفة الصلاحيات لكل دور (Role Matrix)
+ */
+export const ROLE_PERMISSIONS: Readonly<Record<AppRole, ReadonlyArray<AppPermission>>> = {
+  admin: PERMISSION_DEFINITIONS.map(p => p.key),
   cashier: [
     "dashboard.view",
     "profile.view",
@@ -128,7 +133,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, AppPermission[]> = {
     "products.view",
     "categories.view",
     "inventory.view",
-    "reports.view",
+    "reports.view.own",
   ],
   user: [
     "dashboard.view",
@@ -138,23 +143,36 @@ export const ROLE_PERMISSIONS: Record<AppRole, AppPermission[]> = {
   ],
 };
 
+/**
+ * تطبيع نوع الدور لضمان الأمان
+ */
 export function normalizeRole(role?: string | null): AppRole {
   if (role === "admin" || role === "cashier" || role === "user") {
     return role;
   }
-
   return "user";
 }
 
-export function getPermissionsForRole(role?: string | null) {
-  return ROLE_PERMISSIONS[normalizeRole(role)];
+/**
+ * استرجاع صلاحيات دور معين (يعيد نسخة لمنع التعديل العرضي)
+ */
+export function getPermissionsForRole(role?: string | null): AppPermission[] {
+  return [...ROLE_PERMISSIONS[normalizeRole(role)]];
 }
 
-export function hasPermission(role: string | null | undefined, permission: AppPermission) {
-  return getPermissionsForRole(role).includes(permission);
+/**
+ * التحقق من امتلاك صلاحية معينة
+ * يدعم التحقق المتعدد أو المخصص للمستقبل
+ */
+export function hasPermission(role: string | null | undefined, permission: AppPermission): boolean {
+  const permissions = ROLE_PERMISSIONS[normalizeRole(role)];
+  return (permissions as ReadonlyArray<string>).includes(permission);
 }
 
-export function getRoleLabel(role?: string | null) {
+/**
+ * المسميات العربية للأدوار
+ */
+export function getRoleLabel(role?: string | null): string {
   switch (normalizeRole(role)) {
     case "admin":
       return "مدير النظام";
@@ -165,7 +183,10 @@ export function getRoleLabel(role?: string | null) {
   }
 }
 
-export function getRoleDescription(role?: string | null) {
+/**
+ * وصف الأدوار
+ */
+export function getRoleDescription(role?: string | null): string {
   switch (normalizeRole(role)) {
     case "admin":
       return "صلاحية كاملة لإدارة المتجر والإعدادات والحسابات التشغيلية.";
@@ -174,4 +195,22 @@ export function getRoleDescription(role?: string | null) {
     default:
       return "وصول محدود للحساب الشخصي والبيانات الأساسية فقط.";
   }
+}
+
+/**
+ * الحصول على صلاحية بناءً على المفتاح
+ */
+export function getPermissionDefinition(key: AppPermission) {
+  return PERMISSION_DEFINITIONS.find(p => p.key === key);
+}
+
+/**
+ * تجميع الصلاحيات حسب المجموعات (مفيد لواجهات الإعدادات)
+ */
+export function getPermissionsGrouped() {
+  const groups: Record<PermissionGroup, typeof PERMISSION_DEFINITIONS[number][]> = {} as any;
+  PERMISSION_GROUPS.forEach(g => {
+    groups[g as PermissionGroup] = PERMISSION_DEFINITIONS.filter(p => p.group === g);
+  });
+  return groups;
 }

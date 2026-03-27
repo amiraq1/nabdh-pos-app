@@ -16,7 +16,7 @@ const navItems: Array<{
   { icon: ShoppingCart, label: "نقطة البيع", path: "/pos", permission: "pos.use" },
   { icon: Package, label: "المنتجات", path: "/products", permission: "products.view" },
   { icon: Layers, label: "الأقسام", path: "/categories", permission: "categories.view" },
-  { icon: BarChart3, label: "التقارير", path: "/reports", permission: "reports.view" },
+  { icon: BarChart3, label: "التقارير", path: "/reports", permission: "reports.view.own" },
   { icon: Menu, label: "المزيد", path: "/profile", permission: "profile.view" },
 ];
 
@@ -24,9 +24,13 @@ export default function BottomNav() {
   const [location, navigate] = useLocation();
   const { user } = useAuth();
 
-  const visibleItems = navItems.filter(item =>
-    hasPermission((user as any)?.role, item.permission)
-  );
+  const visibleItems = navItems.filter(item => {
+    if (item.path === "/reports") {
+      return hasPermission((user as any)?.role, "reports.view.all") || 
+             hasPermission((user as any)?.role, "reports.view.own");
+    }
+    return hasPermission((user as any)?.role, item.permission);
+  });
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 lg:hidden" aria-label="التنقل الرئيسي">

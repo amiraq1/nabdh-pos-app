@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useRef, useState, useCallback } from "react";
 import { toast } from "sonner";
 import {
   BluetoothPrinterError,
@@ -8,6 +8,28 @@ import {
   type PrinterStatus,
 } from "@/lib/bluetooth";
 import { usePrinterStore } from "@/stores/printerStore";
+
+function getPrinterErrorDetails(error: unknown) {
+  if (error instanceof BluetoothPrinterError) {
+    return {
+      code: error.code,
+      message: error.message,
+    };
+  }
+
+  if (error && typeof error === "object") {
+    const maybeError = error as { code?: string; message?: string };
+    return {
+      code: maybeError.code,
+      message: maybeError.message || "حدث خطأ غير متوقع",
+    };
+  }
+
+  return {
+    code: undefined,
+    message: "حدث خطأ غير متوقع",
+  };
+}
 
 const DEFAULT_PRINTER_STATUS: PrinterStatus = {
   supported: false,
@@ -44,6 +66,9 @@ export function usePOSBluetooth({
   const [isRefreshingPrinters, setIsRefreshingPrinters] = useState(false);
   const [isConnectingPrinter, setIsConnectingPrinter] = useState(false);
   const [isPrintingReceipt, setIsPrintingReceipt] = useState(false);
+  
+  // Note 2: Guard against parallel operations
+  const pendingJobRef = useRef<string | null>(null);
 
   const syncPrinterSnapshot = useCallback(
     async (requestPermissions = false) => {
@@ -129,17 +154,18 @@ export function usePOSBluetooth({
           id: "bt-connect",
         });
       } catch (error: unknown) {
-        const connectionError = error as { code?: string; message?: string };
+        const connectionError = getPrinterErrorDetails(error);
 
         if (connectionError.code === "cancelled") {
-          toast.info(connectionError.message || "تم إلغاء اختيار الطابعة", { id: "bt-connect" });
+          toast.info(connectionError.message, { id: "bt-connect" });
         } else {
-          toast.error(connectionError.message || "تعذر الاتصال بالطابعة", {
+          toast.error(connectionError.message, {
             id: "bt-connect",
           });
         }
       } finally {
         setIsConnectingPrinter(false);
+        pendingJobRef.current = null;
       }
     },
     [
@@ -207,27 +233,27 @@ export function usePOSBluetooth({
         });
 
         await syncPrinterSnapshot(false);
-        toast.success(
-          options.silent
-            ? `تمت الطباعة تلقائياً على ${result.printerName || "الطابعة المحفوظة"}`
-            : "تم إرسال الإيصال للطابعة",
-          { id: toastId }
-        );
+        
+        // Note 3: Respect silent mode for successes
+        if (!options.silent) {
+          toast.success("تم إرسال الإيصال للطابعة", { id: toastId });
+        } else {
+          toast.dismiss(toastId);
+        }
       } catch (error: unknown) {
-        const printError = error as { code?: string; message?: string };
+        const printError = getPrinterErrorDetails(error);
 
         if (printError.code === "cancelled") {
           if (!options.silent) {
-            toast.info(printError.message || "تم إلغاء اختيار الطابعة", { id: toastId });
+            toast.info(printError.message, { id: toastId });
           }
           return;
         }
 
-        toast.error(printError.message || "تأكد من تشغيل الطابعة والبلوتوث", {
-          id: toastId,
-        });
+        toast.error(printError.message, { id: toastId });
       } finally {
         setIsPrintingReceipt(false);
+        pendingJobRef.current = null;
       }
     },
     [

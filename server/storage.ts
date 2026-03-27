@@ -18,6 +18,12 @@ function getStorageConfig(): StorageConfig {
   return { baseUrl: baseUrl.replace(/\/+$/, ""), apiKey };
 }
 
+function assertStorageKey(key: string) {
+  if (!key || key.trim() === "") {
+    throw new Error("Storage key is required and cannot be empty");
+  }
+}
+
 function buildUploadUrl(baseUrl: string, relKey: string): URL {
   const url = new URL("v1/storage/upload", ensureTrailingSlash(baseUrl));
   url.searchParams.set("path", normalizeKey(relKey));
@@ -27,18 +33,34 @@ function buildUploadUrl(baseUrl: string, relKey: string): URL {
 async function buildDownloadUrl(
   baseUrl: string,
   relKey: string,
-  apiKey: string
+  apiKey: string,
+  signal?: AbortSignal
 ): Promise<string> {
   const downloadApiUrl = new URL(
     "v1/storage/downloadUrl",
     ensureTrailingSlash(baseUrl)
   );
   downloadApiUrl.searchParams.set("path", normalizeKey(relKey));
+
   const response = await fetch(downloadApiUrl, {
     method: "GET",
     headers: buildAuthHeaders(apiKey),
+    signal,
   });
-  return (await response.json()).url;
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText);
+    throw new Error(
+      `Storage download URL request failed (${response.status} ${response.statusText}): ${message}`
+    );
+  }
+
+  const payload = await response.json();
+  if (!payload?.url || typeof payload.url !== "string") {
+    throw new Error("Storage API returned an invalid download URL response");
+  }
+
+  return payload.url;
 }
 
 function ensureTrailingSlash(value: string): string {
@@ -54,10 +76,8 @@ function toFormData(
   contentType: string,
   fileName: string
 ): FormData {
-  const blob =
-    typeof data === "string"
-      ? new Blob([data], { type: contentType })
-      : new Blob([data as any], { type: contentType });
+  // Use BlobPart casting instead of any to help TS understand the runtime support
+  const blob = new Blob([data as BlobPart], { type: contentType });
   const form = new FormData();
   form.append("file", blob, fileName || "file");
   return form;
@@ -67,19 +87,26 @@ function buildAuthHeaders(apiKey: string): HeadersInit {
   return { Authorization: `Bearer ${apiKey}` };
 }
 
+/**
+ * Uploads a file to storage
+ */
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
-  contentType = "application/octet-stream"
+  contentType = "application/octet-stream",
+  options?: { signal?: AbortSignal }
 ): Promise<{ key: string; url: string }> {
+  assertStorageKey(relKey);
   const { baseUrl, apiKey } = getStorageConfig();
   const key = normalizeKey(relKey);
   const uploadUrl = buildUploadUrl(baseUrl, key);
   const formData = toFormData(data, contentType, key.split("/").pop() ?? key);
+
   const response = await fetch(uploadUrl, {
     method: "POST",
     headers: buildAuthHeaders(apiKey),
     body: formData,
+    signal: options?.signal,
   });
 
   if (!response.ok) {
@@ -88,15 +115,31 @@ export async function storagePut(
       `Storage upload failed (${response.status} ${response.statusText}): ${message}`
     );
   }
-  const url = (await response.json()).url;
-  return { key, url };
+
+  const payload = await response.json();
+  if (!payload?.url || typeof payload.url !== "string") {
+    throw new Error("Storage API returned an invalid upload response");
+  }
+
+  return { key, url: payload.url };
 }
 
-export async function storageGet(relKey: string): Promise<{ key: string; url: string; }> {
+/**
+ * Gets the download URL for a file in storage
+ */
+export async function storageGetDownloadUrl(
+  relKey: string,
+  options?: { signal?: AbortSignal }
+): Promise<{ key: string; url: string }> {
+  assertStorageKey(relKey);
   const { baseUrl, apiKey } = getStorageConfig();
   const key = normalizeKey(relKey);
+
   return {
     key,
-    url: await buildDownloadUrl(baseUrl, key, apiKey),
+    url: await buildDownloadUrl(baseUrl, key, apiKey, options?.signal),
   };
 }
+
+// Alias for compatibility
+export const storageGet = storageGetDownloadUrl;

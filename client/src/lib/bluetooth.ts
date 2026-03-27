@@ -8,6 +8,7 @@ export interface PrintableCartItem {
   price: number;
   quantity: number;
   subtotal: number;
+  productId?: number;
 }
 
 export interface PrintableInvoice {
@@ -20,6 +21,7 @@ export interface PrintableInvoice {
   customerPhone?: string;
   paymentMethod?: string;
   createdAt?: string | number | Date;
+  status?: "synced" | "pending_sync" | "failed_sync";
 }
 
 export interface PrinterDevice {
