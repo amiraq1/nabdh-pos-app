@@ -126,6 +126,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, AppPermission[]> = {
     "profile.changePin",
     "pos.use",
     "products.view",
+    "categories.view",
     "inventory.view",
     "reports.view",
   ],

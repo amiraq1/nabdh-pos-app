@@ -1,7 +1,7 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { native } from "@/_core/native";
 import { motion } from "framer-motion";
-import { BarChart3, LayoutDashboard, Menu, Package, ShoppingCart } from "lucide-react";
+import { BarChart3, LayoutDashboard, Menu, Package, ShoppingCart, Layers } from "lucide-react";
 import { useLocation } from "wouter";
 
 import { hasPermission, type AppPermission } from "@shared/permissions";
@@ -15,6 +15,7 @@ const navItems: Array<{
   { icon: LayoutDashboard, label: "الرئيسية", path: "/", permission: "dashboard.view" },
   { icon: ShoppingCart, label: "نقطة البيع", path: "/pos", permission: "pos.use" },
   { icon: Package, label: "المنتجات", path: "/products", permission: "products.view" },
+  { icon: Layers, label: "الأقسام", path: "/categories", permission: "categories.view" },
   { icon: BarChart3, label: "التقارير", path: "/reports", permission: "reports.view" },
   { icon: Menu, label: "المزيد", path: "/profile", permission: "profile.view" },
 ];
