@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useMemo } from "react";
 import { toast } from "sonner";
 import {
   BluetoothPrinterError,
@@ -306,34 +306,43 @@ export function usePOSBluetooth({
     syncPrinterSnapshot,
   ]);
 
-  return {
-    printerState: {
-      printerStatus,
-      knownPrinters,
-      isRefreshingPrinters,
-      isConnectingPrinter,
-      isPrintingReceipt,
-      autoPrintEnabled,
-      preferredPrinterId,
-      preferredPrinterName,
-      paperWidth,
-      printCopies,
-      cutAfterPrint,
-    },
-    printerSetters: {
-      setAutoPrintEnabled,
-      setPaperWidth,
-      setPrintCopies,
-      setCutAfterPrint,
-    },
-    printerActions: {
-      syncPrinterSnapshot,
-      refreshPrinterCenter,
-      handleConnectPrinter,
-      handleDisconnectPrinter,
-      handleForgetPrinter,
-      handleBluetoothPrint,
-      handleTestPrint,
-    },
-  };
+  const printerState = useMemo(() => ({
+    printerStatus,
+    knownPrinters,
+    isRefreshingPrinters,
+    isConnectingPrinter,
+    isPrintingReceipt,
+    autoPrintEnabled,
+    preferredPrinterId,
+    preferredPrinterName,
+    paperWidth,
+    printCopies,
+    cutAfterPrint,
+  }), [
+    printerStatus, knownPrinters, isRefreshingPrinters, isConnectingPrinter, 
+    isPrintingReceipt, autoPrintEnabled, preferredPrinterId, preferredPrinterName, 
+    paperWidth, printCopies, cutAfterPrint
+  ]);
+
+  const printerSetters = useMemo(() => ({
+    setAutoPrintEnabled,
+    setPaperWidth,
+    setPrintCopies,
+    setCutAfterPrint,
+  }), [setAutoPrintEnabled, setPaperWidth, setPrintCopies, setCutAfterPrint]);
+
+  const printerActions = useMemo(() => ({
+    syncPrinterSnapshot,
+    refreshPrinterCenter,
+    handleConnectPrinter,
+    handleDisconnectPrinter,
+    handleForgetPrinter,
+    handleBluetoothPrint,
+    handleTestPrint,
+  }), [
+    syncPrinterSnapshot, refreshPrinterCenter, handleConnectPrinter,
+    handleDisconnectPrinter, handleForgetPrinter, handleBluetoothPrint, handleTestPrint
+  ]);
+
+  return { printerState, printerSetters, printerActions };
 }

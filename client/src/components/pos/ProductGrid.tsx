@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+
 import { Loader2, ShoppingCart } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
@@ -21,15 +21,14 @@ export function ProductGrid({
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </div>
       ) : filteredProducts.length > 0 ? (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredProducts.map((product: any) => (
-            <motion.div
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-4 pb-20">
+          {filteredProducts.slice(0, 200).map((product: any) => (
+            <div
               key={product.id}
-              whileHover={{ y: -4, scale: 1.01 }}
-              whileTap={{ scale: 0.96 }}
+              className="transition-transform duration-200 hover:-translate-y-1 hover:scale-[1.01] active:scale-95"
             >
               <Card
-                className="h-full cursor-pointer overflow-hidden rounded-2xl border border-border/30 bg-background/40 shadow-sm backdrop-blur-sm transition-all hover:border-primary/50"
+                className="h-full cursor-pointer overflow-hidden rounded-2xl border border-border/30 bg-card shadow-sm transition-all hover:border-primary/50"
                 onClick={event => {
                   event.preventDefault();
                   addToCart(product);
@@ -75,7 +74,7 @@ export function ProductGrid({
                   </div>
                 </CardContent>
               </Card>
-            </motion.div>
+            </div>
           ))}
         </div>
       ) : (

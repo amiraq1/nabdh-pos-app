@@ -6,7 +6,7 @@
       "name": "المدير (وضع التطوير)",
       "role": "admin",
       "createdAt": "2026-03-22T22:41:37.994Z",
-      "updatedAt": "2026-03-22T22:41:37.994Z",
+      "updatedAt": "2026-03-28T19:40:12.253Z",
       "lastSignedIn": "2026-03-22T22:41:37.994Z"
     }
   ],
@@ -39,6 +39,18 @@
       "minStockLevel": 10,
       "createdAt": "2026-03-25T18:29:11.481Z",
       "updatedAt": "2026-03-25T18:29:11.481Z"
+    },
+    {
+      "id": 2,
+      "categoryId": 1,
+      "name": "APK",
+      "sku": "PRD-00002",
+      "price": "500",
+      "costPrice": null,
+      "quantity": 1,
+      "minStockLevel": 10,
+      "createdAt": "2026-03-28T19:42:32.643Z",
+      "updatedAt": "2026-03-28T19:42:32.643Z"
     }
   ],
   "stockHistory": [

@@ -565,7 +565,7 @@ export default function ProductsPage() {
                       التصنيف
                     </label>
                     <Select
-                      value={formData.categoryId ? String(formData.categoryId) : undefined}
+                      value={formData.categoryId ? String(formData.categoryId) : ""}
                       onValueChange={value =>
                         setFormData(previous => ({
                           ...previous,

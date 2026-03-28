@@ -102,7 +102,7 @@ export function usePOSCheckout({
         className: "font-display bg-primary text-primary-foreground border-primary",
       });
 
-      updateUIStateAfterSale(sale);
+      updateUIStateAfterSale(false);
     } catch (error: any) {
       // Check if it's a network error → save offline
       const isNetworkError =

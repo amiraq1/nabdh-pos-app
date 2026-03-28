@@ -189,19 +189,21 @@ export default function POSPage() {
     setTouchStartPos(null);
   };
 
-  useEffect(() => {
-    void printerActions.syncPrinterSnapshot(false);
-  }, [printerActions]);
+  const { syncPrinterSnapshot, handleBluetoothPrint } = printerActions;
+  const { autoPrintEnabled, preferredPrinterId, preferredPrinterName } = printerState;
 
   useEffect(() => {
-    if (!completedInvoice || !printerState.autoPrintEnabled) return;
-    const { preferredPrinterId, preferredPrinterName } = printerState;
+    void syncPrinterSnapshot(false);
+  }, [syncPrinterSnapshot]);
+
+  useEffect(() => {
+    if (!completedInvoice || !autoPrintEnabled) return;
     if (!preferredPrinterId && !preferredPrinterName) return;
     if (lastAutoPrintedInvoice.current === completedInvoice.invoiceNumber) return;
 
     lastAutoPrintedInvoice.current = completedInvoice.invoiceNumber;
-    void printerActions.handleBluetoothPrint({ silent: true, invoice: completedInvoice });
-  }, [completedInvoice, printerState, printerActions]);
+    void handleBluetoothPrint({ silent: true, invoice: completedInvoice });
+  }, [completedInvoice, autoPrintEnabled, preferredPrinterId, preferredPrinterName, handleBluetoothPrint]);
 
   // Update sync count periodically for the badge
   useEffect(() => {
