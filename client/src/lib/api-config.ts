@@ -1,7 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 
 export const API_URL_STORAGE_KEY = "nabdh-pos-api-url";
-export const EMULATOR_API_URL = "http://10.0.2.2:3000";
+export const EMULATOR_API_URL = "http://10.174.56.53:3000";
 export const API_REQUEST_TIMEOUT_MS = 6000;
 
 const NETWORK_ERROR_PATTERN =

@@ -3,10 +3,10 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch, useLocation } from "wouter";
 import { AnimatePresence, motion, Variants } from "framer-motion";
-import ErrorBoundary from "./components/ErrorBoundary";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import BottomNav from "./components/BottomNav";
-import OfflineIndicator from "./components/OfflineIndicator";
+import BottomNav from "@/components/BottomNav";
+import OfflineIndicator from "@/components/OfflineIndicator";
 
 const Home = lazy(() => import("./pages/Home"));
 const POSPage = lazy(() => import("./pages/POSPage"));

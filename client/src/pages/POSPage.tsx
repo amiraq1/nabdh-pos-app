@@ -11,6 +11,7 @@ import {
   ArrowRight,
   ShoppingCart,
   Zap,
+  Database,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { toast } from "sonner";
@@ -27,6 +28,8 @@ import { usePOSBluetooth } from "@/hooks/usePOSBluetooth";
 import { CartSidebar } from "@/components/pos/CartSidebar";
 import { ProductGrid } from "@/components/pos/ProductGrid";
 import { CheckoutDialog } from "@/components/pos/CheckoutDialog";
+import { SyncHistorySheet } from "@/components/pos/SyncHistorySheet";
+import { getJobsToSync } from "@/lib/offline-queue";
 
 const EDGE_SWIPE_ZONE_PX = 32;
 
@@ -65,6 +68,8 @@ export default function POSPage() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
   const [showPrinterSheet, setShowPrinterSheet] = useState(false);
+  const [showSyncHistory, setShowSyncHistory] = useState(false);
+  const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [completedInvoice, setCompletedInvoice] = useState<PrintableInvoice | null>(null);
   const [touchStartPos, setTouchStartPos] = useState<{ x: number; y: number } | null>(null);
 
@@ -198,6 +203,17 @@ export default function POSPage() {
     void printerActions.handleBluetoothPrint({ silent: true, invoice: completedInvoice });
   }, [completedInvoice, printerState, printerActions]);
 
+  // Update sync count periodically for the badge
+  useEffect(() => {
+    const updateCount = async () => {
+      const pending = await getJobsToSync();
+      setPendingSyncCount(pending.length);
+    };
+    updateCount();
+    const interval = setInterval(updateCount, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div
       className="relative min-h-screen overflow-hidden bg-background"
@@ -226,6 +242,21 @@ export default function POSPage() {
                   onChange={event => setSearchTerm(event.target.value)}
                   className="h-11 rounded-xl border-border/40 bg-background/50 pl-4 pr-10"
                 />
+              </div>
+              <div className="relative">
+                <Button 
+                  onClick={() => setShowSyncHistory(true)} 
+                  variant="outline" 
+                  size="icon" 
+                  className={`h-11 w-11 rounded-xl relative ${pendingSyncCount > 0 ? "border-orange-500/50 bg-orange-500/5" : ""}`}
+                >
+                  <Database className={`h-5 w-5 ${pendingSyncCount > 0 ? "text-orange-500" : ""}`} />
+                  {pendingSyncCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-background">
+                      {pendingSyncCount}
+                    </span>
+                  )}
+                </Button>
               </div>
               <Button onClick={() => setShowPrinterSheet(true)} variant="outline" size="icon" className={`h-11 w-11 rounded-xl ${printerState.printerStatus.connected ? "bg-primary/10 text-primary border-primary/50" : ""}`}><Printer className="h-5 w-5"/></Button>
               <Button onClick={() => setShowBarcodeScanner(true)} variant="outline" size="icon" className="h-11 w-11 rounded-xl"><Barcode className="h-5 w-5"/></Button>
@@ -280,6 +311,8 @@ export default function POSPage() {
         handleStartNewSale={handleStartNewSale}
         setShowPrinterSheet={setShowPrinterSheet}
       />
+
+      <SyncHistorySheet open={showSyncHistory} onOpenChange={setShowSyncHistory} />
 
       <BarcodeScanner isOpen={showBarcodeScanner} onClose={() => setShowBarcodeScanner(false)} onBarcodeDetected={handleBarcodeDetected} />
 

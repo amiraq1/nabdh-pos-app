@@ -32,12 +32,34 @@ export async function enqueueOfflineJob(job: Omit<OfflineJob, "createdAt" | "sta
   toast.info("تم حفظ العملية محلياً للمزامنة لاحقاً 💾", { duration: 2500 });
 }
 
-export async function getPendingJobs(): Promise<OfflineJob[]> {
+export async function getAllJobs(): Promise<OfflineJob[]> {
+  return (await get(QUEUE_KEY)) || [];
+}
+
+export async function getJobsToSync(): Promise<OfflineJob[]> {
   const all: OfflineJob[] = (await get(QUEUE_KEY)) || [];
-  // Oldest first for deterministic ordering (Note 8)
+  const now = new Date().getTime();
+
+  // Note 10: Smart Selection (Retry Thresholds)
   return all
-    .filter(j => j.status === "pending" || j.status === "failed")
+    .filter(j => {
+      if (j.status === "synced") return false;
+      if (j.status === "pending") return true; // New jobs sync immediately
+      if (j.retryCount >= 10) return false; // Stop auto-retrying after 10 fails (Note 3)
+
+      if (j.status === "failed" && j.lastAttemptAt) {
+        // Simple Exponential Backoff: delay = 5s * (2^retryCount)
+        const delay = Math.pow(2, j.retryCount) * 5000;
+        const lastAttempt = new Date(j.lastAttemptAt).getTime();
+        return now - lastAttempt > delay;
+      }
+      return false;
+    })
     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+
+export async function clearSyncedJobs() {
+  await update<OfflineJob[]>(QUEUE_KEY, (val) => (val || []).filter(j => j.status !== "synced"));
 }
 
 export async function markJobStatus(jobId: string, status: SyncStatus, error?: string) {

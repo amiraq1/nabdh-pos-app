@@ -129,6 +129,7 @@ function DialogContent({
         )}
         onEscapeKeyDown={handleEscapeKeyDown}
         {...props}
+        aria-describedby={props["aria-describedby"] || undefined}
       >
         {children}
         {showCloseButton && (
