@@ -223,97 +223,82 @@ export default function POSPage() {
     >
       <div className="pointer-events-none absolute left-0 top-0 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl opacity-50" />
       
-      <div className="container relative z-10 h-screen space-y-4 overflow-hidden py-4 pb-24 lg:grid lg:grid-cols-12 lg:gap-8 lg:pb-6">
-        <div className="flex h-full flex-col space-y-6 lg:col-span-8">
-          <header className="glass-panel flex flex-col justify-between gap-4 rounded-2xl p-4 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-4">
-              <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl border-border/40" onClick={() => navigate("/")}><ArrowRight className="h-5 w-5"/></Button>
-              <div>
-                <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight font-display"><Zap className="h-5 w-5 text-primary"/>نقطة البيع</h1>
-                <p className="text-sm font-medium text-muted-foreground">التوافر الفوري للبيانات والمسح السريع</p>
-              </div>
+      <div className="container relative z-10 flex flex-col h-screen space-y-4 overflow-hidden py-4 pb-24 lg:pb-6">
+        {/* Header */}
+        <header className="glass-panel flex flex-col justify-between gap-4 rounded-2xl p-4 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-4">
+            <Button variant="outline" size="icon" className="h-12 w-12 rounded-xl border-border/40" onClick={() => navigate("/")}><ArrowRight className="h-5 w-5"/></Button>
+            <div>
+              <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight font-display"><Zap className="h-5 w-5 text-primary"/>نقطة البيع</h1>
+              <p className="text-sm font-medium text-muted-foreground">التوافر الفوري للبيانات والمسح السريع</p>
             </div>
+          </div>
 
-            <div className="flex w-full gap-2 sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="ابحث هنا..."
-                  value={searchTerm}
-                  onChange={event => setSearchTerm(event.target.value)}
-                  className="h-11 rounded-xl border-border/40 bg-background/50 pl-4 pr-10"
-                />
-              </div>
-              <div className="relative">
-                <Button 
-                  onClick={() => setShowSyncHistory(true)} 
-                  variant="outline" 
-                  size="icon" 
-                  className={`h-11 w-11 rounded-xl relative ${pendingSyncCount > 0 ? "border-orange-500/50 bg-orange-500/5" : ""}`}
-                >
-                  <Database className={`h-5 w-5 ${pendingSyncCount > 0 ? "text-orange-500" : ""}`} />
-                  {pendingSyncCount > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-background">
-                      {pendingSyncCount}
-                    </span>
-                  )}
-                </Button>
-              </div>
-              <Button onClick={() => setShowPrinterSheet(true)} variant="outline" size="icon" className={`h-11 w-11 rounded-xl ${printerState.printerStatus.connected ? "bg-primary/10 text-primary border-primary/50" : ""}`}><Printer className="h-5 w-5"/></Button>
+          <div className="flex w-full gap-2 sm:w-auto">
+            <div className="relative flex-1 sm:w-64">
+              <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="ابحث هنا..."
+                value={searchTerm}
+                onChange={event => setSearchTerm(event.target.value)}
+                className="h-11 rounded-xl border-border/40 bg-background/50 pl-4 pr-10"
+              />
             </div>
-          </header>
-
-          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar pb-10">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
-              {/* Left Side: Scanner & Cart (Primary) */}
-              <div className="lg:col-span-5 flex flex-col gap-6 sticky top-0 h-fit">
-                {/* Scanner Unit */}
-                <div className="glass-panel p-3 rounded-[32px] border border-border/50 shadow-xl relative overflow-hidden group bg-background/40 backdrop-blur-xl">
-                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
-                  <BarcodeScanner 
-                    isOpen={true} 
-                    variant="inline" 
-                    onBarcodeDetected={handleBarcodeDetected} 
-                    className="w-full"
-                  />
-                </div>
-
-                {/* Inline Cart View */}
-                <div className="flex-1 min-h-[400px]">
-                   <CartSidebar 
-                      cart={cart} 
-                      subtotal={subtotal} 
-                      discountAmount={discountAmount} 
-                      total={total} 
-                      updateQuantity={updateQuantity} 
-                      onCheckout={() => setShowCheckout(true)}
-                      variant="inline"
-                   />
-                </div>
-              </div>
-              
-              {/* Right Side: Product Grid (Secondary) */}
-              <div className="lg:col-span-7 flex flex-col min-h-0">
-                <div className="flex items-center justify-between mb-4 px-2">
-                   <h3 className="font-display font-bold text-lg flex items-center gap-2">
-                     <Database className="w-4 h-4 text-primary" />
-                     قائمة المنتجات
-                   </h3>
-                </div>
-                <ProductGrid productsLoading={productsLoading} filteredProducts={filteredProducts} addToCart={addToCart} />
-              </div>
+            <div className="relative">
+              <Button 
+                onClick={() => setShowSyncHistory(true)} 
+                variant="outline" 
+                size="icon" 
+                className={`h-11 w-11 rounded-xl relative ${pendingSyncCount > 0 ? "border-orange-500/50 bg-orange-500/5" : ""}`}
+              >
+                <Database className={`h-5 w-5 ${pendingSyncCount > 0 ? "text-orange-500" : ""}`} />
+                {pendingSyncCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white ring-2 ring-background">
+                    {pendingSyncCount}
+                  </span>
+                )}
+              </Button>
             </div>
+            <Button onClick={() => setShowPrinterSheet(true)} variant="outline" size="icon" className={`h-11 w-11 rounded-xl ${printerState.printerStatus.connected ? "bg-primary/10 text-primary border-primary/50" : ""}`}><Printer className="h-5 w-5"/></Button>
+          </div>
+        </header>
+
+        {/* Main Content - Full Screen Layout */}
+        <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar flex flex-col gap-4">
+          {/* Scanner Unit - Top */}
+          <div className="glass-panel p-3 rounded-[32px] border border-border/50 shadow-xl relative overflow-hidden group bg-background/40 backdrop-blur-xl flex-shrink-0">
+            <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+            <BarcodeScanner 
+              isOpen={true} 
+              variant="inline" 
+              onBarcodeDetected={handleBarcodeDetected} 
+              className="w-full h-48 md:h-64"
+            />
+          </div>
+
+          {/* Order Items List - Middle */}
+          <div className="flex-1 min-h-0">
+            <CartSidebar 
+              cart={cart} 
+              subtotal={subtotal} 
+              discountAmount={discountAmount} 
+              total={total} 
+              updateQuantity={updateQuantity} 
+              onCheckout={() => setShowCheckout(true)}
+              variant="inline"
+            />
           </div>
         </div>
 
-
-
+        {/* Bottom Action Button */}
         <AnimatePresence>
           {cart.length > 0 && (
-            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="fixed bottom-4 left-4 right-4 z-40 lg:hidden">
-              <Button className="h-16 w-full gap-3 rounded-[24px] bg-primary/95 text-lg font-bold shadow-2xl backdrop-blur-md" onClick={() => setShowCheckout(true)}>
-                <ShoppingCart className="h-5 w-5" />
-                <span>إتمام الدفع</span>
+            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="flex-shrink-0">
+              <Button 
+                className="h-16 w-full gap-3 rounded-[24px] bg-primary/95 text-lg font-bold shadow-2xl backdrop-blur-md text-white" 
+                onClick={() => setShowCheckout(true)}
+              >
+                <span>إنشاء الطلب</span>
                 <span className="rounded-full bg-background/20 px-3 py-1 text-sm">{cart.length}</span>
                 <span className="mr-auto text-xl font-display">{formatCurrency(total)}</span>
               </Button>
