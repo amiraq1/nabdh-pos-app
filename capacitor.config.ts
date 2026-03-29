@@ -5,9 +5,11 @@ const config: CapacitorConfig = {
   appName: 'Nabdh POS',
   webDir: 'dist/public',
   server: {
-    androidScheme: 'http',
-    cleartext: true,
-    url: 'http://10.174.56.53:5173',
+    // In production, we should use bundled assets and secure schemes.
+    // The cleartext and explicit URL are for local development only.
+    androidScheme: process.env.NODE_ENV === 'production' ? 'https' : 'http',
+    cleartext: process.env.NODE_ENV !== 'production',
+    ...(process.env.VITE_DEV_URL ? { url: process.env.VITE_DEV_URL } : {}),
   },
 };
 

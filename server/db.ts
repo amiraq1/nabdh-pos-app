@@ -2,6 +2,7 @@ import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { InsertUser, users, products, stockHistory, sales, saleItems, Product, InsertProduct, InsertStockHistory, Sale, InsertSale, SaleItem, InsertSaleItem, User, expenses, InsertExpense } from "../drizzle/schema";
+import bcrypt from "bcryptjs";
 import { ENV } from './_core/env';
 import { randomUUID } from "crypto";
 import fs from "fs";
@@ -154,13 +155,22 @@ export async function getUserByOpenId(openId: string): Promise<User | undefined>
 
 export async function getUserByPin(pin: string): Promise<User | undefined> {
   const db = await getDb();
+  const sanitizedPin = sanitizePin(pin);
+  
+  let allUsers: User[] = [];
   if (db) {
-    const result = await db.select().from(users).where(eq(users.pin, pin)).limit(1);
-    return result[0];
+    allUsers = await db.select().from(users);
   } else {
     const data = loadMockDb();
-    return data.users.find((u: any) => u.pin === pin);
+    allUsers = data.users;
   }
+
+  for (const user of allUsers) {
+    if (user.pin && bcrypt.compareSync(sanitizedPin, user.pin)) {
+      return user;
+    }
+  }
+  return undefined;
 }
 
 export async function getUserById(id: number): Promise<User | undefined> {
@@ -237,9 +247,9 @@ export async function updateUserProfile(id: number, input: Pick<InsertUser, "nam
 
 export async function updateUserPin(id: number, currentPin: string, nextPin: string) {
   const sanitizedCurrentPin = sanitizePin(currentPin);
-  const uniqueNextPin = await assertPinAvailable(nextPin, id);
+  const sanitizedNextPin = sanitizePin(nextPin);
 
-  if (sanitizedCurrentPin === uniqueNextPin) {
+  if (sanitizedCurrentPin === sanitizedNextPin) {
     throw new Error("الرمز الجديد يجب أن يكون مختلفًا عن الحالي");
   }
 
@@ -249,13 +259,15 @@ export async function updateUserPin(id: number, currentPin: string, nextPin: str
     throw new Error("المستخدم غير موجود");
   }
 
-  if ((existingUser.pin ?? "") !== sanitizedCurrentPin) {
+  if (!existingUser.pin || !bcrypt.compareSync(sanitizedCurrentPin, existingUser.pin)) {
     throw new Error("رمز الدخول الحالي غير صحيح");
   }
 
+  const hashedNextPin = bcrypt.hashSync(sanitizedNextPin, 10);
+
   const db = await getDb();
   if (db) {
-    await db.update(users).set({ pin: uniqueNextPin }).where(eq(users.id, id));
+    await db.update(users).set({ pin: hashedNextPin }).where(eq(users.id, id));
     return { success: true } as const;
   }
 
@@ -266,7 +278,7 @@ export async function updateUserPin(id: number, currentPin: string, nextPin: str
     throw new Error("المستخدم غير موجود");
   }
 
-  data.users[userIndex].pin = uniqueNextPin;
+  data.users[userIndex].pin = hashedNextPin;
   data.users[userIndex].updatedAt = new Date();
   saveMockDb(data);
 
@@ -311,12 +323,13 @@ export async function createManagedUser(
   }
 
   const pin = await assertPinAvailable(input.pin);
+  const hashedPin = bcrypt.hashSync(pin, 10);
   const email = sanitizeOptionalText(input.email);
   const payload: InsertUser = {
     openId: `local-${randomUUID()}`,
     name,
     role: input.role,
-    pin,
+    pin: hashedPin,
     email,
     loginMethod: "pin",
   };
@@ -376,7 +389,8 @@ export async function updateManagedUser(
   }
 
   if (input.pin !== undefined) {
-    updateSet.pin = await assertPinAvailable(input.pin, id);
+    const pin = await assertPinAvailable(input.pin, id);
+    updateSet.pin = bcrypt.hashSync(pin, 10);
   }
 
   const db = await getDb();
