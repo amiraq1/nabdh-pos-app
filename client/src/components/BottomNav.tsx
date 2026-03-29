@@ -15,7 +15,6 @@ const navItems: Array<{
   { icon: LayoutDashboard, label: "الرئيسية", path: "/", permission: "dashboard.view" },
   { icon: ShoppingCart, label: "نقطة البيع", path: "/pos", permission: "pos.use" },
   { icon: Package, label: "المنتجات", path: "/products", permission: "products.view" },
-  { icon: Layers, label: "الأقسام", path: "/categories", permission: "categories.view" },
   { icon: BarChart3, label: "التقارير", path: "/reports", permission: "reports.view.own" },
   { icon: Menu, label: "المزيد", path: "/profile", permission: "profile.view" },
 ];

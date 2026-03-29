@@ -54,8 +54,7 @@ import { formatCurrency } from "@/lib/utils";
 import { hasPermission } from "@shared/permissions";
 
 type ProductFormState = {
-  categoryId: number;
-  name: string;
+    name: string;
   description: string;
   sku: string;
   barcode: string;
@@ -66,8 +65,7 @@ type ProductFormState = {
 };
 
 const INITIAL_FORM: ProductFormState = {
-  categoryId: 0,
-  name: "",
+    name: "",
   description: "",
   sku: "",
   barcode: "",
@@ -90,8 +88,7 @@ export default function ProductsPage() {
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("all");
-  const [formData, setFormData] = useState<ProductFormState>(INITIAL_FORM);
+    const [formData, setFormData] = useState<ProductFormState>(INITIAL_FORM);
   const [productToDelete, setProductToDelete] = useState<any | null>(null);
 
   const {
@@ -99,10 +96,9 @@ export default function ProductsPage() {
     isLoading: productsLoading,
     refetch: refetchProducts,
   } = trpc.products.list.useQuery(
-    selectedCategory !== "all" ? Number.parseInt(selectedCategory, 10) : undefined
+    
   );
-  const { data: categories } = trpc.categories.list.useQuery();
-  const {
+    const {
     data: nextTrackingCode,
     refetch: refetchNextTrackingCode,
     isFetching: isTrackingCodeLoading,
@@ -114,13 +110,7 @@ export default function ProductsPage() {
   const deleteMutation = trpc.products.delete.useMutation();
   const canManageProducts = hasPermission((user as any)?.role, "products.manage");
 
-  const categoryNameById = useMemo<Map<number, string>>(
-    () =>
-      new Map(
-        (categories ?? []).map((category: any): [number, string] => [category.id, category.name])
-      ),
-    [categories]
-  );
+  
 
   const filteredProducts = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
@@ -244,8 +234,7 @@ export default function ProductsPage() {
   const handleEdit = (product: any) => {
     setEditingId(product.id);
     setFormData({
-      categoryId: product.categoryId,
-      name: product.name ?? "",
+            name: product.name ?? "",
       description: product.description ?? "",
       sku: product.sku ?? "",
       barcode: product.barcode ?? "",
@@ -271,10 +260,7 @@ export default function ProductsPage() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!formData.categoryId) {
-      toast.error("اختر تصنيفًا للمنتج أولًا");
-      return;
-    }
+    
 
     if (!formData.name.trim()) {
       toast.error("اسم المنتج مطلوب");
@@ -287,8 +273,7 @@ export default function ProductsPage() {
     }
 
     const payload = {
-      categoryId: formData.categoryId,
-      name: formData.name.trim(),
+            name: formData.name.trim(),
       description: formData.description.trim() || undefined,
       sku: formData.sku.trim() || undefined,
       barcode: formData.barcode.trim() || undefined,
@@ -372,19 +357,7 @@ export default function ProductsPage() {
                 />
               </div>
 
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger className="h-14 rounded-2xl border-border/30 bg-background/60 text-base">
-                  <SelectValue placeholder="كل التصنيفات" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">كل التصنيفات</SelectItem>
-                  {(categories ?? []).map((category: any) => (
-                    <SelectItem key={category.id} value={String(category.id)}>
-                      {category.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              
             </div>
           </Card>
 
@@ -560,31 +533,7 @@ export default function ProductsPage() {
                       required
                     />
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-display font-bold text-muted-foreground">
-                      التصنيف
-                    </label>
-                    <Select
-                      value={formData.categoryId ? String(formData.categoryId) : ""}
-                      onValueChange={value =>
-                        setFormData(previous => ({
-                          ...previous,
-                          categoryId: Number.parseInt(value, 10),
-                        }))
-                      }
-                    >
-                      <SelectTrigger className="h-14 rounded-2xl border-border/40 bg-background/60">
-                        <SelectValue placeholder="اختر تصنيف المنتج" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(categories ?? []).map((category: any) => (
-                          <SelectItem key={category.id} value={String(category.id)}>
-                            {category.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  
 
                   <div className="space-y-2">
                     <label className="text-sm font-display font-bold text-muted-foreground">
@@ -808,9 +757,7 @@ export default function ProductsPage() {
                               </span>
                             )}
                           </div>
-                          <p className="text-sm text-muted-foreground">
-                            {categoryNameById.get(product.categoryId) ?? "بدون تصنيف"}
-                          </p>
+
                         </div>
                       </div>
 

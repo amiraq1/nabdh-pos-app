@@ -19,9 +19,11 @@ import { useAudioAlert } from "@/hooks/useAudioAlert";
 
 interface BarcodeScannerProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
   onBarcodeDetected: (barcode: string) => void | Promise<void>;
   soundEnabled?: boolean;
+  variant?: "dialog" | "inline";
+  className?: string;
 }
 
 const waitForNextFrame = () =>
@@ -131,7 +133,11 @@ export default function BarcodeScanner({
   onClose,
   onBarcodeDetected,
   soundEnabled = true,
+  variant = "dialog",
+  className,
 }: BarcodeScannerProps) {
+  const isInline = variant === "inline";
+  const effectiveUsesNativeScanner = isInline ? false : USES_NATIVE_SCANNER;
   const videoRef = useRef<HTMLVideoElement>(null);
   const webReaderRef = useRef(new BrowserMultiFormatReader());
   const onCloseRef = useRef(onClose);
@@ -142,7 +148,7 @@ export default function BarcodeScanner({
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState("");
   const [statusMessage, setStatusMessage] = useState(
-    USES_NATIVE_SCANNER ? "تجهيز الماسح الأصلي..." : ""
+    effectiveUsesNativeScanner ? "تجهيز الماسح الأصلي..." : ""
   );
   const [isSoundEnabled, setIsSoundEnabled] = useState(soundEnabled);
 
@@ -173,7 +179,7 @@ export default function BarcodeScanner({
 
   const closeScanner = useCallback(() => {
     stopWebScanning();
-    onCloseRef.current();
+    onCloseRef.current?.();
   }, [stopWebScanning]);
 
   const ensureAndroidGoogleScanner = useCallback(async () => {
@@ -253,7 +259,7 @@ export default function BarcodeScanner({
   }, []);
 
   const runNativeScan = useCallback(async () => {
-    if (!USES_NATIVE_SCANNER || nativeScanInFlightRef.current) {
+    if (!effectiveUsesNativeScanner || nativeScanInFlightRef.current) {
       return;
     }
 
@@ -298,7 +304,7 @@ export default function BarcodeScanner({
       const scannedValue = barcodes.map(decodeNativeBarcodeValue).find(Boolean);
 
       if (!scannedValue) {
-        onCloseRef.current();
+        onCloseRef.current?.();
         return;
       }
 
@@ -310,7 +316,7 @@ export default function BarcodeScanner({
 
       await onBarcodeDetectedRef.current(scannedValue);
       toast.success(`تمت قراءة الكود: ${scannedValue}`);
-      onCloseRef.current();
+      onCloseRef.current?.();
     } catch (scanError) {
       if (sessionId !== nativeSessionRef.current) {
         return;
@@ -319,7 +325,7 @@ export default function BarcodeScanner({
       const message = getScanErrorMessage(scanError);
 
       if (!message) {
-        onCloseRef.current();
+        onCloseRef.current?.();
         return;
       }
 
@@ -377,7 +383,14 @@ export default function BarcodeScanner({
         stopWebScanning();
         await onBarcodeDetectedRef.current(barcode);
         toast.success(`تمت قراءة الكود: ${barcode}`);
-        onCloseRef.current();
+        if (!isInline) {
+          onCloseRef.current?.();
+        } else {
+          // If inline, automatically restart scan after a brief pause
+          setTimeout(() => {
+            if (isOpen) void startWebScan();
+          }, 1500);
+        }
         return;
       }
 
@@ -468,6 +481,106 @@ export default function BarcodeScanner({
     []
   );
 
+  const scannerContent = (
+    <div className={isInline ? "" : "space-y-4"}>
+      {error ? (
+        <div className="rounded-lg border border-destructive/50 bg-destructive/20 p-4 text-center">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button
+            onClick={() =>
+              effectiveUsesNativeScanner ? void runNativeScan() : void startWebScan()
+            }
+            className="mt-3 w-full"
+            variant="outline"
+          >
+            حاول مجددًا
+          </Button>
+        </div>
+      ) : effectiveUsesNativeScanner ? (
+        <div className="space-y-4">
+          <div className="rounded-[28px] border border-border/50 bg-gradient-to-br from-background via-muted/40 to-background p-6 text-center shadow-sm">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+              <Camera className="h-8 w-8" />
+            </div>
+            <p className="font-display text-base font-semibold text-foreground">
+              {isScanning ? "جاري فتح الماسح الأصلي" : "الماسح جاهز"}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {statusMessage || "سيتم فتح واجهة المسح الأصلية على الجهاز"}
+            </p>
+          </div>
+
+          {!isInline && (
+            <Button
+              onClick={closeScanner}
+              variant="outline"
+              className="w-full gap-2"
+            >
+              <X className="w-4 h-4" />
+              إغلاق
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 relative">
+          <div className="relative aspect-video overflow-hidden rounded-2xl bg-black border border-border/30">
+            <video
+              ref={videoRef}
+              className="h-full w-full object-cover"
+              autoPlay
+              muted
+              playsInline
+            />
+
+            {/* Glowing Scanner Reticle */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="h-[60%] w-[60%] max-w-[200px] animate-pulse rounded-2xl border-2 border-primary/60 shadow-[0_0_20px_rgba(var(--primary),0.3)] shadow-[inset_0_0_20px_rgba(var(--primary),0.3)]" />
+            </div>
+            
+            <div className="absolute left-4 top-4 h-6 w-6 border-l-2 border-t-2 border-primary/80 rounded-tl-lg" />
+            <div className="absolute right-4 top-4 h-6 w-6 border-r-2 border-t-2 border-primary/80 rounded-tr-lg" />
+            <div className="absolute bottom-4 left-4 h-6 w-6 border-b-2 border-l-2 border-primary/80 rounded-bl-lg" />
+            <div className="absolute bottom-4 right-4 h-6 w-6 border-b-2 border-r-2 border-primary/80 rounded-br-lg" />
+          </div>
+
+          <div className="flex items-center justify-between text-xs text-foreground/60 w-full px-2">
+             <span className="flex items-center gap-1.5">
+               {isScanning ? (
+                 <><span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span></span> الكاميرا نشطة</>
+               ) : (
+                 "وجه الكاميرا للباركود..."
+               )}
+             </span>
+             {isSoundEnabled ? (
+                <Volume2 className="h-3.5 w-3.5 text-primary/70 cursor-pointer" onClick={() => setIsSoundEnabled(false)} />
+             ) : (
+                <VolumeX className="h-3.5 w-3.5 text-muted-foreground cursor-pointer" onClick={() => setIsSoundEnabled(true)} />
+             )}
+          </div>
+
+          {!isInline && (
+            <Button
+              onClick={closeScanner}
+              variant="outline"
+              className="w-full gap-2 mt-4"
+            >
+              <X className="w-4 h-4" />
+              إغلاق
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  if (isInline) {
+    return (
+      <div className={className}>
+        {scannerContent}
+      </div>
+    );
+  }
+
   return (
     <Dialog
       open={isOpen}
@@ -505,86 +618,7 @@ export default function BarcodeScanner({
           </div>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {error ? (
-            <div className="rounded-lg border border-destructive/50 bg-destructive/20 p-4 text-center">
-              <p className="text-sm text-destructive">{error}</p>
-              <Button
-                onClick={() =>
-                  USES_NATIVE_SCANNER ? void runNativeScan() : void startWebScan()
-                }
-                className="mt-3 w-full"
-                variant="outline"
-              >
-                حاول مجددًا
-              </Button>
-            </div>
-          ) : USES_NATIVE_SCANNER ? (
-            <div className="space-y-4">
-              <div className="rounded-[28px] border border-border/50 bg-gradient-to-br from-background via-muted/40 to-background p-6 text-center shadow-sm">
-                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <Camera className="h-8 w-8" />
-                </div>
-                <p className="font-display text-base font-semibold text-foreground">
-                  {isScanning ? "جاري فتح الماسح الأصلي" : "الماسح جاهز"}
-                </p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {statusMessage || "سيتم فتح واجهة المسح الأصلية على الجهاز"}
-                </p>
-              </div>
-
-              <Button
-                onClick={closeScanner}
-                variant="outline"
-                className="w-full gap-2"
-              >
-                <X className="w-4 h-4" />
-                إغلاق
-              </Button>
-            </div>
-          ) : (
-            <>
-              <div className="relative aspect-video overflow-hidden rounded-lg bg-black">
-                <video
-                  ref={videoRef}
-                  className="h-full w-full object-cover"
-                  autoPlay
-                  muted
-                  playsInline
-                />
-
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="h-64 w-64 animate-pulse rounded-lg border-2 border-accent" />
-                </div>
-
-                <div className="absolute left-4 top-4 h-8 w-8 border-l-2 border-t-2 border-accent" />
-                <div className="absolute right-4 top-4 h-8 w-8 border-r-2 border-t-2 border-accent" />
-                <div className="absolute bottom-4 left-4 h-8 w-8 border-b-2 border-l-2 border-accent" />
-                <div className="absolute bottom-4 right-4 h-8 w-8 border-b-2 border-r-2 border-accent" />
-              </div>
-
-              <div className="text-center text-sm text-foreground/60">
-                <p>وجه الكاميرا نحو الباركود</p>
-                <p className="mt-1 text-xs">سيتم الكشف عن الباركود تلقائيًا</p>
-                {isScanning && (
-                  <p className="mt-2 text-xs text-accent">الكاميرا تعمل الآن</p>
-                )}
-                {isSoundEnabled && (
-                  <p className="mt-2 text-xs text-accent">التنبيهات الصوتية مفعلة</p>
-                )}
-              </div>
-
-              <Button
-                onClick={closeScanner}
-                variant="outline"
-                className="w-full gap-2"
-              >
-                <X className="w-4 h-4" />
-                إغلاق
-              </Button>
-            </>
-          )}
-        </div>
+        {scannerContent}
       </DialogContent>
     </Dialog>
   );

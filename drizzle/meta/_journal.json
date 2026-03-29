@@ -1,19 +1,19 @@
 {
   "version": "7",
-  "dialect": "mysql",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "5",
-      "when": 1774212339219,
-      "tag": "0000_empty_robbie_robertson",
+      "version": "7",
+      "when": 1774802445708,
+      "tag": "0000_eager_the_watchers",
       "breakpoints": true
     },
     {
       "idx": 1,
-      "version": "5",
-      "when": 1774212437520,
-      "tag": "0001_conscious_madelyne_pryor",
+      "version": "7",
+      "when": 1774803353065,
+      "tag": "0001_youthful_slipstream",
       "breakpoints": true
     }
   ]

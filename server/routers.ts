@@ -82,29 +82,15 @@ export const appRouter = router({
       }),
   }),
 
-  // ============ Categories Router ============
-  categories: router({
-    list: publicProcedure.query(() => db.getCategories()),
-    get: publicProcedure.input(z.number()).query(({ input }) => db.getCategoryById(input)),
-    create: adminProcedure
-      .input(z.object({ name: z.string(), description: z.string().optional(), imageUrl: z.string().optional() }))
-      .mutation(({ input }) => db.createCategory(input)),
-    update: adminProcedure
-      .input(z.object({ id: z.number(), name: z.string().optional(), description: z.string().optional(), imageUrl: z.string().optional() }))
-      .mutation(({ input: { id, ...data } }) => db.updateCategory(id, data)),
-    delete: adminProcedure.input(z.number()).mutation(({ input }) => db.deleteCategory(input)),
-  }),
-
   // ============ Products Router ============
   products: router({
-    list: publicProcedure.input(z.number().optional()).query(({ input }) => db.getProducts(input)),
+    list: publicProcedure.query(() => db.getProducts()),
     get: publicProcedure.input(z.number()).query(({ input }) => db.getProductById(input)),
     nextTrackingCode: publicProcedure.query(() => db.getNextProductTrackingCode()),
     getBySku: publicProcedure.input(z.string()).query(({ input }) => db.getProductBySku(input)),
     getByBarcode: publicProcedure.input(z.string()).query(({ input }) => db.getProductByBarcode(input)),
     create: adminProcedure
       .input(z.object({
-        categoryId: z.number(),
         name: z.string(),
         description: z.string().optional(),
         sku: z.string().optional(),
@@ -119,7 +105,6 @@ export const appRouter = router({
     update: adminProcedure
       .input(z.object({
         id: z.number(),
-        categoryId: z.number().optional(),
         name: z.string().optional(),
         description: z.string().optional(),
         sku: z.string().optional(),

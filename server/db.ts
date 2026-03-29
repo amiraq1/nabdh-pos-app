@@ -1,6 +1,7 @@
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, categories, products, stockHistory, sales, saleItems, Category, InsertCategory, Product, InsertProduct, InsertStockHistory, Sale, InsertSale, SaleItem, InsertSaleItem, User, expenses, InsertExpense } from "../drizzle/schema";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+import { InsertUser, users, products, stockHistory, sales, saleItems, Product, InsertProduct, InsertStockHistory, Sale, InsertSale, SaleItem, InsertSaleItem, User, expenses, InsertExpense } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { randomUUID } from "crypto";
 import fs from "fs";
@@ -98,7 +99,8 @@ function sanitizeProductInput(input: Partial<InsertProduct>) {
 export async function getDb() {
   if (!_db && ENV.databaseUrl) {
     try {
-      _db = drizzle(ENV.databaseUrl);
+      const client = postgres(ENV.databaseUrl, { prepare: false });
+      _db = drizzle(client);
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
@@ -124,7 +126,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
     });
     if (user.lastSignedIn) { values.lastSignedIn = user.lastSignedIn; updateSet.lastSignedIn = user.lastSignedIn; }
     if (user.role) { values.role = user.role; updateSet.role = user.role; }
-    await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
+    await db.insert(users).values(values).onConflictDoUpdate({ target: users.openId, set: updateSet });
   } else {
     // Mock DB Logic
     const data = loadMockDb();
@@ -401,65 +403,15 @@ export async function updateManagedUser(
   return data.users[userIndex];
 }
 
-// ============ Categories Queries ============
-export async function getCategories() {
-  const db = await getDb();
-  if (db) return db.select().from(categories).orderBy(categories.name);
-  return loadMockDb().categories;
-}
-
-export async function getCategoryById(id: number) {
-  const db = await getDb();
-  if (db) {
-    const result = await db.select().from(categories).where(eq(categories.id, id)).limit(1);
-    return result[0];
-  }
-  return loadMockDb().categories.find((c: any) => c.id === id);
-}
-
-export async function createCategory(input: InsertCategory) {
-  const db = await getDb();
-  if (db) {
-    const [result] = await db.insert(categories).values(input);
-    return { insertId: (result as any).insertId };
-  }
-  const data = loadMockDb();
-  const newCat = { id: getNextId(data.categories), ...input, createdAt: new Date(), updatedAt: new Date() };
-  data.categories.push(newCat);
-  saveMockDb(data);
-  return { insertId: newCat.id };
-}
-
-export async function updateCategory(id: number, input: Partial<InsertCategory>) {
-  const db = await getDb();
-  if (db) return db.update(categories).set(input).where(eq(categories.id, id));
-  const data = loadMockDb();
-  const idx = data.categories.findIndex((c: any) => c.id === id);
-  if (idx !== -1) {
-    data.categories[idx] = { ...data.categories[idx], ...input, updatedAt: new Date() };
-    saveMockDb(data);
-  }
-}
-
-export async function deleteCategory(id: number) {
-  const db = await getDb();
-  if (db) return db.delete(categories).where(eq(categories.id, id));
-  const data = loadMockDb();
-  data.categories = data.categories.filter((c: any) => c.id !== id);
-  saveMockDb(data);
-}
-
 // ============ Products Queries ============
-export async function getProducts(categoryId?: number) {
+export async function getProducts() {
   const db = await getDb();
   if (db) {
     let query: any = db.select().from(products);
-    if (categoryId) query = query.where(eq(products.categoryId, categoryId));
     return query.orderBy(products.name);
   }
   const data = loadMockDb();
   let list = data.products;
-  if (categoryId) list = list.filter((p: any) => p.categoryId === categoryId);
   return list;
 }
 

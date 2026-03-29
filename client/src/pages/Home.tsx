@@ -149,7 +149,6 @@ export default function Home() {
   }> = [
     { title: "نقطة البيع", desc: "فتح محطة الكاشير فوراً", icon: ShoppingCart, link: "/pos", color: "from-blue-500/20 to-indigo-500/20", iconColor: "text-blue-500" },
     { title: "المنتجات", desc: "إضافة وتعديل الأرصدة", icon: Package, link: "/products", color: "from-emerald-500/20 to-green-500/20", iconColor: "text-emerald-500" },
-    { title: "الأقسام", desc: "أقسام المتجر", icon: Layers, link: "/categories", color: "from-orange-500/20 to-amber-500/20", iconColor: "text-orange-500" },
     { title: "المخزون", desc: "مراقبة النواقص والجرد", icon: Boxes, link: "/inventory", color: "from-rose-500/20 to-red-500/20", iconColor: "text-rose-500" },
     { title: "التقارير", desc: "الأرباح والمبيعات", icon: BarChart3, link: "/reports", color: "from-purple-500/20 to-fuchsia-500/20", iconColor: "text-purple-500" },
     { title: "المصاريف", desc: "سجل المدفوعات اليومية", icon: Receipt, link: "/expenses", color: "from-cyan-500/20 to-sky-500/20", iconColor: "text-cyan-500" },
@@ -157,7 +156,6 @@ export default function Home() {
   const dashboardPermissions: AppPermission[] = [
     "pos.use",
     "products.view",
-    "categories.view",
     "inventory.view",
     "reports.view.own",
     "expenses.view",

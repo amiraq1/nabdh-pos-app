@@ -64,9 +64,8 @@ export default function POSPage() {
   } = useCartStore();
   
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [showCheckout, setShowCheckout] = useState(false);
-  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+
   const [showPrinterSheet, setShowPrinterSheet] = useState(false);
   const [showSyncHistory, setShowSyncHistory] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
@@ -82,7 +81,7 @@ export default function POSPage() {
     printerActions,
   } = usePOSBluetooth({ completedInvoice });
 
-  const { products, categories, productsLoading, isOffline } = usePOSData(selectedCategory);
+  const { products, productsLoading, isOffline } = usePOSData();
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const filteredProducts = useMemo(() => {
@@ -261,21 +260,53 @@ export default function POSPage() {
                 </Button>
               </div>
               <Button onClick={() => setShowPrinterSheet(true)} variant="outline" size="icon" className={`h-11 w-11 rounded-xl ${printerState.printerStatus.connected ? "bg-primary/10 text-primary border-primary/50" : ""}`}><Printer className="h-5 w-5"/></Button>
-              <Button onClick={() => setShowBarcodeScanner(true)} variant="outline" size="icon" className="h-11 w-11 rounded-xl"><Barcode className="h-5 w-5"/></Button>
             </div>
           </header>
 
-          <div className="scrollbar-none flex gap-2 overflow-x-auto pb-2 touch-pan-x">
-            <Button variant={selectedCategory === "all" ? "default" : "outline"} className="rounded-full px-6" onClick={() => setSelectedCategory("all")}>الكل</Button>
-            {categories?.map((cat: any) => (
-              <Button key={cat.id} variant={selectedCategory === cat.id.toString() ? "default" : "outline"} className="rounded-full px-6" onClick={() => setSelectedCategory(cat.id.toString())}>{cat.name}</Button>
-            ))}
-          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar pb-10">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+              {/* Left Side: Scanner & Cart (Primary) */}
+              <div className="lg:col-span-5 flex flex-col gap-6 sticky top-0 h-fit">
+                {/* Scanner Unit */}
+                <div className="glass-panel p-3 rounded-[32px] border border-border/50 shadow-xl relative overflow-hidden group bg-background/40 backdrop-blur-xl">
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-1000" />
+                  <BarcodeScanner 
+                    isOpen={true} 
+                    variant="inline" 
+                    onBarcodeDetected={handleBarcodeDetected} 
+                    className="w-full"
+                  />
+                </div>
 
-          <ProductGrid productsLoading={productsLoading} filteredProducts={filteredProducts} addToCart={addToCart} />
+                {/* Inline Cart View */}
+                <div className="flex-1 min-h-[400px]">
+                   <CartSidebar 
+                      cart={cart} 
+                      subtotal={subtotal} 
+                      discountAmount={discountAmount} 
+                      total={total} 
+                      updateQuantity={updateQuantity} 
+                      onCheckout={() => setShowCheckout(true)}
+                      variant="inline"
+                   />
+                </div>
+              </div>
+              
+              {/* Right Side: Product Grid (Secondary) */}
+              <div className="lg:col-span-7 flex flex-col min-h-0">
+                <div className="flex items-center justify-between mb-4 px-2">
+                   <h3 className="font-display font-bold text-lg flex items-center gap-2">
+                     <Database className="w-4 h-4 text-primary" />
+                     قائمة المنتجات
+                   </h3>
+                </div>
+                <ProductGrid productsLoading={productsLoading} filteredProducts={filteredProducts} addToCart={addToCart} />
+              </div>
+            </div>
+          </div>
         </div>
 
-        <CartSidebar cart={cart} subtotal={subtotal} discountAmount={discountAmount} total={total} updateQuantity={updateQuantity} onCheckout={() => setShowCheckout(true)} />
+
 
         <AnimatePresence>
           {cart.length > 0 && (
@@ -315,8 +346,6 @@ export default function POSPage() {
       />
 
       <SyncHistorySheet open={showSyncHistory} onOpenChange={setShowSyncHistory} />
-
-      <BarcodeScanner isOpen={showBarcodeScanner} onClose={() => setShowBarcodeScanner(false)} onBarcodeDetected={handleBarcodeDetected} />
 
       <BluetoothPrinterSheet
         open={showPrinterSheet}

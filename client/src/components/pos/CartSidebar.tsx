@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Minus, Plus, ShoppingCart, ArrowRight } from "lucide-react";
+import { Minus, Plus, ShoppingCart, ArrowRight, Database } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +10,7 @@ interface CartSidebarProps {
   total: number;
   updateQuantity: (productId: number, quantity: number) => void;
   onCheckout: () => void;
+  variant?: "inline" | "sidebar";
 }
 
 export function CartSidebar({
@@ -19,98 +20,112 @@ export function CartSidebar({
   total,
   updateQuantity,
   onCheckout,
+  variant = "sidebar",
 }: CartSidebarProps) {
+  const isInline = variant === "inline";
+
   return (
-    <div className="hidden h-full flex-col lg:col-span-4 lg:flex">
-      <div className="glass-panel relative flex flex-1 flex-col overflow-hidden rounded-3xl border-white/5 shadow-2xl dark:border-white/5">
-        <div className="border-b border-border/30 bg-background/50 p-6 pb-4">
-          <h2 className="flex items-center justify-between text-xl font-bold font-display">
-            <span>سلة المشتريات</span>
-            <span className="rounded-full bg-primary px-3 py-1 text-sm text-primary-foreground">
-              {cart.length}
-            </span>
-          </h2>
+    <div className={isInline ? "w-full h-full flex flex-col" : "hidden h-full flex-col lg:col-span-4 lg:flex"}>
+      <div className={`glass-panel relative flex flex-1 flex-col overflow-hidden rounded-[32px] border-border/50 shadow-2xl transition-all duration-500 bg-background/60 backdrop-blur-2xl ${isInline ? "min-h-[500px]" : ""}`}>
+        
+        {/* Header */}
+        <div className="border-b border-border/30 px-6 py-5 flex items-center justify-between bg-gradient-to-r from-background/50 to-transparent">
+          <div className="flex items-center gap-3">
+             <div className="bg-primary/10 p-2 rounded-xl">
+                <ShoppingCart className="w-5 h-5 text-primary" />
+             </div>
+             <h2 className="text-lg font-bold font-display">طلبات الأوردر</h2>
+          </div>
+          <span className="rounded-full bg-primary/10 border border-primary/20 px-3 py-0.5 text-xs font-black text-primary animate-pulse">
+            {cart.length} أصناف
+          </span>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto p-4">
+        {/* Dynamic Items List */}
+        <div className="flex-1 space-y-4 overflow-y-auto no-scrollbar p-5">
           <AnimatePresence mode="popLayout">
             {cart.length > 0 ? (
               cart.map(item => (
                 <motion.div
                   key={item.productId}
                   layout
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                  className="group rounded-2xl border border-border/40 bg-background/80 p-3 transition-colors hover:border-primary/40"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="group relative rounded-[24px] border border-border/40 bg-background/40 p-4 transition-all hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5"
                 >
-                  <div className="flex gap-3">
-                    <div className="flex-1">
-                      <p className="line-clamp-1 text-sm font-medium text-foreground font-display">
+                  <div className="flex items-center gap-4">
+                    {/* Item Icon/Image Placeholder */}
+                    <div className="h-14 w-14 rounded-2xl bg-muted/50 flex items-center justify-center shrink-0 border border-border/20">
+                       <Database className="w-6 h-6 text-muted-foreground/30" />
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate text-base font-bold text-foreground font-display mb-1">
                         {item.name}
                       </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
+                      <p className="text-sm font-medium text-primary/80 font-display">
                         {formatCurrency(item.price)}
                       </p>
                     </div>
-                    <div className="flex flex-col items-end justify-between text-left">
-                      <p className="font-bold text-accent">{formatCurrency(item.subtotal)}</p>
-                      <div className="mt-2 flex items-center gap-1 rounded-lg bg-muted/50 p-1">
-                        <button
-                          type="button"
-                          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                          onClick={() => updateQuantity(item.productId, item.quantity - 1)}
-                        >
-                          <Minus className="h-3 w-3" />
-                        </button>
-                        <span className="w-8 text-center text-xs font-bold">{item.quantity}</span>
-                        <button
-                          type="button"
-                          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                          onClick={() => updateQuantity(item.productId, item.quantity + 1)}
-                        >
-                          <Plus className="h-3 w-3" />
-                        </button>
-                      </div>
+
+                    {/* Highly Accessible Controls (as per reference image) */}
+                    <div className="flex items-center gap-3 bg-muted/30 rounded-2xl p-1.5 border border-border/20">
+                      <button
+                        type="button"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl bg-background border border-border/30 text-destructive transition-all active:scale-90 hover:bg-destructive hover:text-white"
+                        onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+                      >
+                        <Minus className="h-5 w-5" />
+                      </button>
+                      
+                      <span className="w-6 text-center text-base font-black font-display">{item.quantity}</span>
+                      
+                      <button
+                        type="button"
+                        className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-all active:scale-90 hover:opacity-90 shadow-md shadow-primary/20"
+                        onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+                      >
+                        <Plus className="h-5 w-5" />
+                      </button>
                     </div>
                   </div>
                 </motion.div>
               ))
             ) : (
-              <div className="flex h-full flex-col items-center justify-center space-y-4 text-muted-foreground/50 opacity-50">
-                <ShoppingCart className="h-16 w-16" />
-                <p className="font-display">قم بمسح باركود لبدء البيع</p>
+              <div className="flex h-full flex-col items-center justify-center space-y-6 text-muted-foreground/30 py-20 translate-y-[-20px]">
+                <div className="relative">
+                   <div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full" />
+                   <ShoppingCart className="h-24 w-24 relative opacity-20" />
+                </div>
+                <div className="text-center space-y-2">
+                   <p className="font-display text-lg font-bold text-muted-foreground/50">السلة فارغة</p>
+                   <p className="text-sm">ابدأ بمسح الأكواد لإضافة المنتجات</p>
+                </div>
               </div>
             )}
           </AnimatePresence>
         </div>
 
-        <div className="space-y-4 border-t border-border/30 bg-background/90 p-6">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm text-muted-foreground">
-              <span>المجموع الفرعي</span>
-              <span className="font-medium text-foreground">{formatCurrency(subtotal)}</span>
-            </div>
-            {discountAmount > 0 && (
-              <div className="flex justify-between text-sm text-destructive">
-                <span>الخصم</span>
-                <span className="font-medium">-{formatCurrency(discountAmount)}</span>
-              </div>
-            )}
-            <div className="mt-2 flex justify-between border-t border-border/40 pt-2 text-2xl font-bold text-primary font-display">
-              <span>الإجمالي</span>
-              <span>{formatCurrency(total)}</span>
-            </div>
+        {/* Footer Summary & Action */}
+        <div className="p-6 bg-gradient-to-b from-background/0 to-background/80 backdrop-blur-md border-t border-border/30">
+          <div className="flex items-center justify-between mb-6">
+             <span className="text-muted-foreground font-display font-medium">إجمالي السعر</span>
+             <span className="text-2xl font-black text-primary font-display tracking-tight">
+               {formatCurrency(total)}
+             </span>
           </div>
 
           <Button
-            className="group h-14 w-full rounded-2xl text-lg font-bold tracking-wide shadow-lg shadow-primary/20 font-display"
+            className="group h-16 w-full rounded-[24px] text-xl font-black tracking-normal shadow-2xl shadow-primary/30 font-display relative overflow-hidden transition-all hover:scale-[1.02] active:scale-95"
             onClick={onCheckout}
             disabled={cart.length === 0}
           >
-            تحديث الدفع
-            <ArrowRight className="mr-2 h-5 w-5 transition-transform group-hover:-translate-x-1" />
+            <div className="absolute inset-0 bg-gradient-to-r from-primary via-primary/90 to-primary group-hover:via-primary transition-all underline-offset-4" />
+            <span className="relative flex items-center gap-3">
+               إنشاء الطلب
+               <ArrowRight className="h-6 w-6 transition-transform group-hover:translate-x-[-4px]" />
+            </span>
           </Button>
         </div>
       </div>

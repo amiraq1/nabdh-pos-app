@@ -68,18 +68,6 @@ export const PERMISSION_DEFINITIONS = [
     group: "المخزون",
   },
   {
-    key: "categories.view",
-    label: "عرض التصنيفات",
-    description: "الوصول إلى بنية التصنيفات داخل النظام",
-    group: "المخزون",
-  },
-  {
-    key: "categories.manage",
-    label: "إدارة التصنيفات",
-    description: "إنشاء التصنيفات وتعديلها وحذفها",
-    group: "المخزون",
-  },
-  {
     key: "inventory.view",
     label: "عرض المخزون",
     description: "مراجعة الرصيد وحركة الأصناف والتنبيهات",
@@ -131,7 +119,6 @@ export const ROLE_PERMISSIONS: Readonly<Record<AppRole, ReadonlyArray<AppPermiss
     "profile.changePin",
     "pos.use",
     "products.view",
-    "categories.view",
     "inventory.view",
     "reports.view.own",
   ],

@@ -11,7 +11,6 @@ import OfflineIndicator from "@/components/OfflineIndicator";
 const Home = lazy(() => import("./pages/Home"));
 const POSPage = lazy(() => import("./pages/POSPage"));
 const ProductsPage = lazy(() => import("./pages/ProductsPage"));
-const CategoriesPage = lazy(() => import("./pages/CategoriesPage"));
 const InventoryPage = lazy(() => import("./pages/InventoryPage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const ExpensesPage = lazy(() => import("./pages/ExpensesPage"));
@@ -42,7 +41,6 @@ function AnimatedRouter() {
             <Route path="/" component={Home} />
             <Route path="/pos" component={POSPage} />
             <Route path="/products" component={ProductsPage} />
-            <Route path="/categories" component={CategoriesPage} />
             <Route path="/inventory" component={InventoryPage} />
             <Route path="/reports" component={ReportsPage} />
             <Route path="/expenses" component={ExpensesPage} />
