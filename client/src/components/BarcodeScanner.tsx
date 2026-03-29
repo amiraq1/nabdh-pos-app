@@ -400,6 +400,13 @@ export default function BarcodeScanner({
     };
 
     try {
+      if (Capacitor.isNativePlatform()) {
+        const permissionStatus = await NativeBarcodeScanner.requestPermissions();
+        if (!isGrantedPermission(permissionStatus.camera)) {
+          throw new DOMException("تم رفض إذن استخدام الكاميرا", "NotAllowedError");
+        }
+      }
+
       setError("");
       setStatusMessage("");
       setIsScanning(true);
